@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const notebooklmUrlInput = document.getElementById('notebooklmUrl');
   const exportToNotebooklmBtn = document.getElementById('exportToNotebooklmBtn');
   const step3Status = document.getElementById('step3Status');
+  const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
+  const step4Status = document.getElementById('step4Status');
   
   // Initialize popup
   initializePopup();
@@ -20,6 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
     copyToNotionBtn.addEventListener('click', handleCopyToNotion);
     exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
+    createFlashcardsBtn.addEventListener('click', handleCreateFlashcards);
     
     // Load saved URLs if available
     chrome.storage.local.get(['kindleFileUrl', 'notionPageUrl', 'notionAuthToken', 'notebooklmUrl'], function(result) {
@@ -335,6 +338,41 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatus(step3Status, `Error: ${error.message}`, 'error');
     } finally {
       exportToNotebooklmBtn.disabled = false;
+    }
+  }
+  
+  async function handleCreateFlashcards() {
+    createFlashcardsBtn.disabled = true;
+    showStatus(step4Status, 'Creating flashcards...', 'info');
+    
+    try {
+      // Get the current active tab (should be the NotebookLM page)
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentTab = tabs[0];
+      
+      if (!currentTab.url.includes('notebooklm.google.com')) {
+        showStatus(step4Status, 'Please navigate to your NotebookLM notebook first', 'error');
+        return;
+      }
+      
+      // Send message to content script to create flashcards
+      chrome.tabs.sendMessage(currentTab.id, { 
+        action: 'createFlashcards'
+      }, function(response) {
+        if (chrome.runtime.lastError) {
+          showStatus(step4Status, 'Please refresh the NotebookLM page and try again', 'error');
+        } else if (response && response.success) {
+          showStatus(step4Status, 'Successfully created flashcards!', 'success');
+        } else {
+          showStatus(step4Status, response?.error || 'Failed to create flashcards', 'error');
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error creating flashcards:', error);
+      showStatus(step4Status, `Error: ${error.message}`, 'error');
+    } finally {
+      createFlashcardsBtn.disabled = false;
     }
   }
   

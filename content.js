@@ -12,6 +12,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // Keep message channel open for async response
   }
   
+  if (request.action === 'createFlashcards') {
+    handleCreateFlashcards()
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({success: false, error: error.message}));
+    return true; // Keep message channel open for async response
+  }
+  
   sendResponse({status: 'ready'});
 });
 
@@ -171,6 +178,51 @@ async function handleNotebooklmExport(content) {
     
   } catch (error) {
     console.error('NotebookLM export error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function handleCreateFlashcards() {
+  try {
+    console.log('Starting create flashcards automation...');
+    
+    // Find and click the "Create flashcards" button
+    // Based on the recording, try multiple selectors
+    let createFlashcardsButton = await waitForElement('basic-create-artifact-button:nth-of-type(5) span.slim-container > span > span', 5000);
+    
+    if (!createFlashcardsButton) {
+      // Try alternative selectors from the recording
+      createFlashcardsButton = await waitForElement('basic-create-artifact-button:nth-of-type(5)', 3000);
+    }
+    
+    if (!createFlashcardsButton) {
+      // Fallback: search for buttons with "flashcard" or similar text
+      const buttons = document.querySelectorAll('basic-create-artifact-button');
+      let foundButton = null;
+      for (let button of buttons) {
+        const text = button.textContent.toLowerCase();
+        if (text.includes('flashcard') || text.includes('create') || text.includes('study')) {
+          foundButton = button;
+          break;
+        }
+      }
+      if (!foundButton) {
+        throw new Error('Could not find "Create flashcards" button');
+      }
+      foundButton.click();
+    } else {
+      createFlashcardsButton.click();
+    }
+    
+    console.log('Clicked Create flashcards button...');
+    
+    // Wait for the flashcards to be generated
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    return { success: true, message: 'Successfully created flashcards' };
+    
+  } catch (error) {
+    console.error('Create flashcards error:', error);
     return { success: false, error: error.message };
   }
 }
