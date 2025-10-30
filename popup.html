@@ -9,8 +9,24 @@
 <body>
   <div class="container">
     <h1>Learning Workflow</h1>
+    
+    <!-- Step 1: Process Kindle Highlights -->
+    <div class="step">
+      <h2>Step 1: Process Kindle Highlights</h2>
+      <div class="input-group">
+        <input 
+          type="url" 
+          id="kindleFileUrl" 
+          placeholder="Paste Kindle highlights file URL here..."
+          class="url-input"
+        />
+        <button id="processKindleBtn" class="action-btn">Process Highlights</button>
+      </div>
+      <div id="step1Status" class="status"></div>
+    </div>
+    
     <div id="content">
-      <!-- Content will be dynamically generated -->
+      <!-- Additional steps will be added here -->
     </div>
   </div>
   <script src="popup.js"></script>
