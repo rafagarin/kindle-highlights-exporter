@@ -284,11 +284,11 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   async function handleCopyToNotion() {
-    const pageUrl = notionPageUrlInput.value.trim();
+    const databaseUrl = notionPageUrlInput.value.trim();
     const authToken = notionAuthTokenInput.value.trim();
     
-    if (!pageUrl) {
-      showStatus(step2Status, 'Please enter a Notion page URL', 'error');
+    if (!databaseUrl) {
+      showStatus(step2Status, 'Please enter a Notion database/data source URL', 'error');
       return;
     }
     
@@ -297,14 +297,21 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
     
+    // Check if a chapter is selected
+    const selectedChapter = chapterSelect.value;
+    if (!selectedChapter) {
+      showStatus(step2Status, 'Please select a chapter first in Step 0', 'error');
+      return;
+    }
+    
     // Save URLs for future use
     chrome.storage.local.set({ 
-      notionPageUrl: pageUrl,
+      notionPageUrl: databaseUrl,
       notionAuthToken: authToken
     });
     
     copyToNotionBtn.disabled = true;
-    showStatus(step2Status, 'Copying to Notion...', 'info');
+    showStatus(step2Status, 'Creating page in Notion...', 'info');
     
     try {
       // Get content from clipboard
@@ -315,55 +322,121 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
       
-      // Extract page ID from Notion URL
-      const pageId = extractNotionPageId(pageUrl);
-      if (!pageId) {
-        showStatus(step2Status, 'Invalid Notion page URL format', 'error');
+      // Extract database ID from Notion URL
+      const databaseId = extractNotionDatabaseId(databaseUrl);
+      if (!databaseId) {
+        showStatus(step2Status, 'Invalid Notion database URL format', 'error');
         return;
       }
+      
+      // Get book title from cached HTML
+      const bookTitle = extractBookTitle(cachedHtmlContent);
+      if (!bookTitle) {
+        showStatus(step2Status, 'Could not extract book title. Please reload chapters in Step 0.', 'error');
+        return;
+      }
+      
+      // Create page title: "Book Name - Chapter Name"
+      const pageTitle = `${bookTitle} - ${selectedChapter}`;
+      
+      // Fetch database to get data source and find the title property name
+      showStatus(step2Status, 'Fetching database schema...', 'info');
+      const { dataSourceId, titlePropertyName } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
       
       // Convert Markdown to Notion blocks
       const blocks = convertMarkdownToNotionBlocks(clipboardContent);
       
-      // Split blocks into chunks of 100 (Notion API limit)
-      const chunkSize = 100;
-      const chunks = [];
-      for (let i = 0; i < blocks.length; i += chunkSize) {
-        chunks.push(blocks.slice(i, i + chunkSize));
+      // Create the page with title and content
+      showStatus(step2Status, `Creating page "${pageTitle}"...`, 'info');
+      
+      const pageData = {
+        parent: dataSourceId 
+          ? { data_source_id: dataSourceId }
+          : { database_id: databaseId },
+        properties: {
+          [titlePropertyName]: {
+            type: "title",
+            title: [
+              {
+                type: "text",
+                text: {
+                  content: pageTitle
+                }
+              }
+            ]
+          }
+        }
+      };
+      
+      // Add children (content blocks) if we have any
+      if (blocks.length > 0) {
+        // Split blocks into chunks of 100 (Notion API limit for children)
+        const chunkSize = 100;
+        const firstChunk = blocks.slice(0, chunkSize);
+        pageData.children = firstChunk;
       }
       
-      showStatus(step2Status, `Sending ${blocks.length} blocks in ${chunks.length} batches...`, 'info');
+      // Create the page
+      const createResponse = await fetch('https://api.notion.com/v1/pages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'Notion-Version': '2022-06-28'
+        },
+        body: JSON.stringify(pageData)
+      });
       
-      // Send blocks in batches
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-            'Notion-Version': '2022-06-28'
-          },
-          body: JSON.stringify({
-            children: chunk
-          })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(`Notion API error: ${errorData.message || response.statusText}`);
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json();
+        throw new Error(`Notion API error: ${errorData.message || createResponse.statusText}`);
+      }
+      
+      const createdPage = await createResponse.json();
+      const pageId = createdPage.id;
+      
+      // If we have more than 100 blocks, add them in batches
+      if (blocks.length > 100) {
+        const remainingBlocks = blocks.slice(100);
+        const chunkSize = 100;
+        const chunks = [];
+        for (let i = 0; i < remainingBlocks.length; i += chunkSize) {
+          chunks.push(remainingBlocks.slice(i, i + chunkSize));
         }
         
-        // Update progress
-        showStatus(step2Status, `Sent batch ${i + 1}/${chunks.length} (${chunk.length} blocks)...`, 'info');
+        showStatus(step2Status, `Adding remaining ${remainingBlocks.length} blocks in ${chunks.length} batches...`, 'info');
         
-        // Add a small delay between requests to avoid rate limiting
-        if (i < chunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+        // Add remaining blocks in batches
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json',
+              'Notion-Version': '2022-06-28'
+            },
+            body: JSON.stringify({
+              children: chunk
+            })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Notion API error: ${errorData.message || response.statusText}`);
+          }
+          
+          // Update progress
+          showStatus(step2Status, `Added batch ${i + 1}/${chunks.length} (${chunk.length} blocks)...`, 'info');
+          
+          // Add a small delay between requests to avoid rate limiting
+          if (i < chunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
       }
       
-      showStatus(step2Status, `Successfully copied ${blocks.length} blocks to Notion!`, 'success');
+      showStatus(step2Status, `Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');
       
     } catch (error) {
       console.error('Error copying to Notion:', error);
@@ -383,6 +456,111 @@ document.addEventListener('DOMContentLoaded', function() {
       return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20,32)}`;
     }
     return null;
+  }
+  
+  function extractNotionDatabaseId(url) {
+    // Extract database ID from Notion URL
+    // Format: https://www.notion.so/workspace/database-title-32charid or similar
+    // Can use the same extraction logic as page ID
+    const match = url.match(/([a-f0-9]{32})$/);
+    if (match) {
+      const id = match[1];
+      // Format as 8-4-4-4-12
+      return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20,32)}`;
+    }
+    return null;
+  }
+  
+  function extractBookTitle(htmlContent) {
+    if (!htmlContent) {
+      return null;
+    }
+    
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, 'text/html');
+      const bookTitleElement = doc.querySelector('.bookTitle');
+      
+      if (bookTitleElement) {
+        return bookTitleElement.textContent.trim();
+      }
+    } catch (error) {
+      console.error('Error extracting book title:', error);
+    }
+    
+    return null;
+  }
+  
+  async function getDatabaseDataSourceAndTitleProperty(databaseId, authToken) {
+    try {
+      // First, fetch the database to get its data sources
+      const dbResponse = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+          'Notion-Version': '2022-06-28'
+        }
+      });
+      
+      if (!dbResponse.ok) {
+        const errorData = await dbResponse.json();
+        throw new Error(`Could not fetch database: ${errorData.message || dbResponse.statusText}`);
+      }
+      
+      const database = await dbResponse.json();
+      
+      let dataSourceId = null;
+      let properties = null;
+      
+      // Check if database has data_sources array (newer API structure)
+      // Note: Some API versions may not include data_sources, in which case
+      // properties are directly on the database object
+      if (database.data_sources && Array.isArray(database.data_sources) && database.data_sources.length > 0) {
+        // New API structure: database has data_sources array
+        dataSourceId = database.data_sources[0].id;
+      
+        // Now fetch the data source to get its properties
+        const dsResponse = await fetch(`https://api.notion.com/v1/data_sources/${dataSourceId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28'
+          }
+        });
+        
+        if (dsResponse.ok) {
+          const dataSource = await dsResponse.json();
+          properties = dataSource.properties || {};
+        } else {
+          // If we can't fetch the data source, try using database properties
+          properties = database.properties || {};
+        }
+      } else {
+        // Older API structure: database properties are directly on the database object
+        // For older API, we use database_id directly as parent (not data_source_id)
+        properties = database.properties || {};
+      }
+      
+      if (!properties || Object.keys(properties).length === 0) {
+        throw new Error('Could not find database properties');
+      }
+      
+      // Find the property with type "title"
+      let titlePropertyName = 'Name'; // default fallback
+      for (const [propertyName, property] of Object.entries(properties)) {
+        if (property.type === 'title') {
+          titlePropertyName = propertyName;
+          break;
+        }
+      }
+      
+      return { dataSourceId, titlePropertyName };
+    } catch (error) {
+      console.error('Error fetching database/data source:', error);
+      throw error;
+    }
   }
   
   function convertMarkdownToNotionBlocks(markdown) {
