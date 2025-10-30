@@ -25,6 +25,29 @@
       <div id="step1Status" class="status"></div>
     </div>
     
+    <!-- Step 2: Copy to Notion -->
+    <div class="step">
+      <h2>Step 2: Copy to Notion</h2>
+      <div class="input-group horizontal">
+        <input 
+          type="url" 
+          id="notionPageUrl" 
+          placeholder="Paste Notion page URL here..."
+          class="url-input"
+        />
+        <button id="copyToNotionBtn" class="action-btn">Copy to Notion</button>
+      </div>
+      <div class="input-group">
+        <input 
+          type="password" 
+          id="notionAuthToken" 
+          placeholder="Enter Notion integration token..."
+          class="url-input"
+        />
+      </div>
+      <div id="step2Status" class="status"></div>
+    </div>
+    
     <div id="content">
       <!-- Additional steps will be added here -->
     </div>

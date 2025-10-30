@@ -10,6 +10,9 @@
     "clipboardRead",
     "sidePanel"
   ],
+  "host_permissions": [
+    "https://api.notion.com/*"
+  ],
   "side_panel": {
     "default_path": "popup.html"
   },

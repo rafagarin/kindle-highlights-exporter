@@ -4,6 +4,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const kindleFileUrlInput = document.getElementById('kindleFileUrl');
   const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
+  const notionPageUrlInput = document.getElementById('notionPageUrl');
+  const notionAuthTokenInput = document.getElementById('notionAuthToken');
+  const copyToNotionBtn = document.getElementById('copyToNotionBtn');
+  const step2Status = document.getElementById('step2Status');
   
   // Initialize popup
   initializePopup();
@@ -11,11 +15,18 @@ document.addEventListener('DOMContentLoaded', function() {
   function initializePopup() {
     // Set up event listeners
     processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
+    copyToNotionBtn.addEventListener('click', handleCopyToNotion);
     
-    // Load saved URL if available
-    chrome.storage.local.get(['kindleFileUrl'], function(result) {
+    // Load saved URLs if available
+    chrome.storage.local.get(['kindleFileUrl', 'notionPageUrl', 'notionAuthToken'], function(result) {
       if (result.kindleFileUrl) {
         kindleFileUrlInput.value = result.kindleFileUrl;
+      }
+      if (result.notionPageUrl) {
+        notionPageUrlInput.value = result.notionPageUrl;
+      }
+      if (result.notionAuthToken) {
+        notionAuthTokenInput.value = result.notionAuthToken;
       }
     });
   }
@@ -115,6 +126,157 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     return processedContent.trim();
+  }
+  
+  async function handleCopyToNotion() {
+    const pageUrl = notionPageUrlInput.value.trim();
+    const authToken = notionAuthTokenInput.value.trim();
+    
+    if (!pageUrl) {
+      showStatus(step2Status, 'Please enter a Notion page URL', 'error');
+      return;
+    }
+    
+    if (!authToken) {
+      showStatus(step2Status, 'Please enter a Notion integration token', 'error');
+      return;
+    }
+    
+    // Save URLs for future use
+    chrome.storage.local.set({ 
+      notionPageUrl: pageUrl,
+      notionAuthToken: authToken
+    });
+    
+    copyToNotionBtn.disabled = true;
+    showStatus(step2Status, 'Copying to Notion...', 'info');
+    
+    try {
+      // Get content from clipboard
+      const clipboardContent = await navigator.clipboard.readText();
+      
+      if (!clipboardContent) {
+        showStatus(step2Status, 'No content in clipboard. Please run Step 1 first.', 'error');
+        return;
+      }
+      
+      // Extract page ID from Notion URL
+      const pageId = extractNotionPageId(pageUrl);
+      if (!pageId) {
+        showStatus(step2Status, 'Invalid Notion page URL format', 'error');
+        return;
+      }
+      
+      // Convert Markdown to Notion blocks
+      const blocks = convertMarkdownToNotionBlocks(clipboardContent);
+      
+      // Split blocks into chunks of 100 (Notion API limit)
+      const chunkSize = 100;
+      const chunks = [];
+      for (let i = 0; i < blocks.length; i += chunkSize) {
+        chunks.push(blocks.slice(i, i + chunkSize));
+      }
+      
+      showStatus(step2Status, `Sending ${blocks.length} blocks in ${chunks.length} batches...`, 'info');
+      
+      // Send blocks in batches
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28'
+          },
+          body: JSON.stringify({
+            children: chunk
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Notion API error: ${errorData.message || response.statusText}`);
+        }
+        
+        // Update progress
+        showStatus(step2Status, `Sent batch ${i + 1}/${chunks.length} (${chunk.length} blocks)...`, 'info');
+        
+        // Add a small delay between requests to avoid rate limiting
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      showStatus(step2Status, `Successfully copied ${blocks.length} blocks to Notion!`, 'success');
+      
+    } catch (error) {
+      console.error('Error copying to Notion:', error);
+      showStatus(step2Status, `Error: ${error.message}`, 'error');
+    } finally {
+      copyToNotionBtn.disabled = false;
+    }
+  }
+  
+  function extractNotionPageId(url) {
+    // Extract page ID from Notion URL
+    // Format: https://www.notion.so/workspace/page-title-32charid
+    const match = url.match(/([a-f0-9]{32})$/);
+    if (match) {
+      const id = match[1];
+      // Format as 8-4-4-4-12
+      return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20,32)}`;
+    }
+    return null;
+  }
+  
+  function convertMarkdownToNotionBlocks(markdown) {
+    const lines = markdown.split('\n');
+    const blocks = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      if (line.startsWith('## ')) {
+        // Heading 2
+        blocks.push({
+          object: "block",
+          type: "heading_2",
+          heading_2: {
+            rich_text: [{
+              type: "text",
+              text: { content: line.substring(3) }
+            }]
+          }
+        });
+      } else if (line.startsWith('### ')) {
+        // Heading 3
+        blocks.push({
+          object: "block",
+          type: "heading_3",
+          heading_3: {
+            rich_text: [{
+              type: "text",
+              text: { content: line.substring(4) }
+            }]
+          }
+        });
+      } else if (line.length > 0) {
+        // Regular paragraph
+        blocks.push({
+          object: "block",
+          type: "paragraph",
+          paragraph: {
+            rich_text: [{
+              type: "text",
+              text: { content: line }
+            }]
+          }
+        });
+      }
+    }
+    
+    return blocks;
   }
   
   function showStatus(element, message, type) {
