@@ -9,6 +9,9 @@ chrome.runtime.onInstalled.addListener(function(details) {
       version: '1.0.0'
     }
   });
+  
+  // Set up side panel for all tabs
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 });
 
 // Listen for messages from popup or content scripts

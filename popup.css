@@ -1,15 +1,18 @@
-/* Learning Workflow Extension - Popup Styles */
+/* Learning Workflow Extension - Side Panel Styles */
 body {
-  width: 400px;
-  min-height: 300px;
+  width: 100%;
+  height: 100vh;
   margin: 0;
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: #f5f5f5;
+  overflow-y: auto;
 }
 
 .container {
   padding: 20px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 h1 {
@@ -35,8 +38,13 @@ h2 {
 
 .input-group {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.input-group.horizontal {
+  flex-direction: row;
 }
 
 .url-input {
