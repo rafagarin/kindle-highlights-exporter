@@ -46,8 +46,8 @@ async function handleNotebooklmExport(content) {
     console.log('Clicking Add source button...');
     addSourceButton.click();
     
-    // Wait for the modal/dialog to appear
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for the modal/dialog to appear - use adaptive wait
+    await waitForElement('.cdk-overlay-container, mat-dialog-container', 3000, 100);
     
     // Step 2: Find and click the "Copied text" chip
     // Based on the recorded output, try multiple selectors
@@ -78,8 +78,8 @@ async function handleNotebooklmExport(content) {
     
     console.log('Clicked Copied text chip...');
     
-    // Wait for the textarea to appear
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for the textarea to appear - check immediately and poll
+    await waitForElement('textarea', 3000, 100);
     
     // Step 3: Find and focus the textarea
     // Based on the recording, use the specific ID selector
@@ -105,8 +105,8 @@ async function handleNotebooklmExport(content) {
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
     textarea.dispatchEvent(new Event('change', { bubbles: true }));
     
-    // Wait a moment for the form to update
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Wait a moment for the form to update - reduced wait time
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // Step 4: Find and click the "Insert" button
     // Based on the recording, use the specific selector
@@ -137,8 +137,12 @@ async function handleNotebooklmExport(content) {
     
     console.log('Clicked Insert button...');
     
-    // Wait for the operation to complete
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for the operation to complete - reduced wait, check for completion
+    // Wait for either success indicator or modal to start closing
+    await Promise.race([
+      waitForElement('[aria-label*="success"], .success-indicator', 2000, 100).catch(() => null),
+      new Promise(resolve => setTimeout(resolve, 1000))
+    ]);
     
     // Step 5: Close the sources modal
     console.log('Closing sources modal...');
@@ -167,12 +171,11 @@ async function handleNotebooklmExport(content) {
     if (closeButton) {
       closeButton.click();
       console.log('Closed sources modal...');
+      // Wait briefly for modal to close, but don't block too long
+      await new Promise(resolve => setTimeout(resolve, 300));
     } else {
       console.log('Could not find close button, but continuing...');
     }
-    
-    // Wait for modal to close
-    await new Promise(resolve => setTimeout(resolve, 1000));
     
     return { success: true, message: 'Successfully exported to NotebookLM' };
     
@@ -227,30 +230,53 @@ async function handleCreateFlashcards() {
   }
 }
 
-function waitForElement(selector, timeout = 5000) {
+function waitForElement(selector, timeout = 5000, pollInterval = 250) {
   return new Promise((resolve) => {
-    const element = document.querySelector(selector);
-    if (element) {
-      resolve(element);
+    // Check immediately first
+    const immediateCheck = document.querySelector(selector);
+    if (immediateCheck) {
+      resolve(immediateCheck);
       return;
     }
     
-    const observer = new MutationObserver((mutations, obs) => {
+    let startTime = Date.now();
+    let resolved = false;
+    
+    const pollIntervalId = setInterval(() => {
+      if (resolved) return;
+      
       const element = document.querySelector(selector);
       if (element) {
-        obs.disconnect();
+        resolved = true;
+        clearInterval(pollIntervalId);
         resolve(element);
+        return;
       }
-    });
-    
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-    
-    setTimeout(() => {
-      observer.disconnect();
-      resolve(null);
-    }, timeout);
+      
+      // Check timeout
+      if (Date.now() - startTime >= timeout) {
+        resolved = true;
+        clearInterval(pollIntervalId);
+        // Also try MutationObserver as fallback before giving up
+        const observer = new MutationObserver(() => {
+          const element = document.querySelector(selector);
+          if (element) {
+            observer.disconnect();
+            resolve(element);
+          }
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+        
+        // Final fallback timeout
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(null);
+        }, 1000);
+      }
+    }, pollInterval);
   });
 }

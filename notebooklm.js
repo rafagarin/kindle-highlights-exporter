@@ -29,9 +29,9 @@ export async function exportToNotebooklm(url, content, statusCallback) {
     // Open the NotebookLM page in a new tab
     const tab = await chrome.tabs.create({ url: url });
     
-    // Wait for the page to load
+    // Wait for the page to load - check if page is ready instead of fixed timeout
     statusCallback('Waiting for NotebookLM to load...', 'info');
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await waitForTabReady(tab.id);
     
     // Send message to content script to automate the process
     return new Promise((resolve) => {
@@ -57,6 +57,46 @@ export async function exportToNotebooklm(url, content, statusCallback) {
     statusCallback(`Error: ${error.message}`, 'error');
     return false;
   }
+}
+
+/**
+ * Wait for a tab to be ready (loaded and interactive)
+ * @param {number} tabId - Tab ID to wait for
+ * @returns {Promise<void>}
+ */
+function waitForTabReady(tabId) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const maxAttempts = 20; // Maximum 10 seconds (20 * 500ms)
+    
+    const checkReady = () => {
+      chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        
+        // Check if tab is complete and ready
+        if (tab.status === 'complete') {
+          // Give it a small moment for dynamic content to load
+          setTimeout(resolve, 500);
+          return;
+        }
+        
+        attempts++;
+        if (attempts >= maxAttempts) {
+          // Timeout - but continue anyway, page might still be loading
+          resolve();
+          return;
+        }
+        
+        // Check again in 500ms
+        setTimeout(checkReady, 500);
+      });
+    };
+    
+    checkReady();
+  });
 }
 
 /**
