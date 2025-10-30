@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Learning Workflow Extension",
+  "version": "1.0.0",
+  "description": "Automates learning workflow from Kindle highlights to NotebookLM flashcards",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "clipboardWrite",
+    "clipboardRead"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Learning Workflow"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
