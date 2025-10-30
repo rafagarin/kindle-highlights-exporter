@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const notionAuthTokenInput = document.getElementById('notionAuthToken');
   const copyToNotionBtn = document.getElementById('copyToNotionBtn');
   const step2Status = document.getElementById('step2Status');
+  const notebooklmUrlInput = document.getElementById('notebooklmUrl');
+  const exportToNotebooklmBtn = document.getElementById('exportToNotebooklmBtn');
+  const step3Status = document.getElementById('step3Status');
   
   // Initialize popup
   initializePopup();
@@ -16,9 +19,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up event listeners
     processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
     copyToNotionBtn.addEventListener('click', handleCopyToNotion);
+    exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
     
     // Load saved URLs if available
-    chrome.storage.local.get(['kindleFileUrl', 'notionPageUrl', 'notionAuthToken'], function(result) {
+    chrome.storage.local.get(['kindleFileUrl', 'notionPageUrl', 'notionAuthToken', 'notebooklmUrl'], function(result) {
       if (result.kindleFileUrl) {
         kindleFileUrlInput.value = result.kindleFileUrl;
       }
@@ -27,6 +31,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (result.notionAuthToken) {
         notionAuthTokenInput.value = result.notionAuthToken;
+      }
+      if (result.notebooklmUrl) {
+        notebooklmUrlInput.value = result.notebooklmUrl;
       }
     });
   }
@@ -277,6 +284,58 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     return blocks;
+  }
+  
+  async function handleExportToNotebooklm() {
+    const url = notebooklmUrlInput.value.trim();
+    
+    if (!url) {
+      showStatus(step3Status, 'Please enter a NotebookLM notebook URL', 'error');
+      return;
+    }
+    
+    // Save URL for future use
+    chrome.storage.local.set({ notebooklmUrl: url });
+    
+    exportToNotebooklmBtn.disabled = true;
+    showStatus(step3Status, 'Opening NotebookLM...', 'info');
+    
+    try {
+      // Get content from clipboard
+      const clipboardContent = await navigator.clipboard.readText();
+      
+      if (!clipboardContent) {
+        showStatus(step3Status, 'No content in clipboard. Please run Step 1 first.', 'error');
+        return;
+      }
+      
+      // Open the NotebookLM page in a new tab
+      const tab = await chrome.tabs.create({ url: url });
+      
+      // Wait for the page to load
+      showStatus(step3Status, 'Waiting for NotebookLM to load...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Send message to content script to automate the process
+      chrome.tabs.sendMessage(tab.id, { 
+        action: 'exportToNotebooklm',
+        content: clipboardContent
+      }, function(response) {
+        if (chrome.runtime.lastError) {
+          showStatus(step3Status, 'Please refresh the NotebookLM page and try again', 'error');
+        } else if (response && response.success) {
+          showStatus(step3Status, 'Successfully exported to NotebookLM!', 'success');
+        } else {
+          showStatus(step3Status, response?.error || 'Failed to export to NotebookLM', 'error');
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error exporting to NotebookLM:', error);
+      showStatus(step3Status, `Error: ${error.message}`, 'error');
+    } finally {
+      exportToNotebooklmBtn.disabled = false;
+    }
   }
   
   function showStatus(element, message, type) {
