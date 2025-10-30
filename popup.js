@@ -1,6 +1,11 @@
 // Learning Workflow Extension - Popup Script
 document.addEventListener('DOMContentLoaded', function() {
   const content = document.getElementById('content');
+  const kindleFileUrlForChaptersInput = document.getElementById('kindleFileUrlForChapters');
+  const loadChaptersBtn = document.getElementById('loadChaptersBtn');
+  const chapterSelect = document.getElementById('chapterSelect');
+  const chapterSelectionGroup = document.getElementById('chapterSelectionGroup');
+  const step0Status = document.getElementById('step0Status');
   const kindleFileUrlInput = document.getElementById('kindleFileUrl');
   const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
@@ -14,20 +19,34 @@ document.addEventListener('DOMContentLoaded', function() {
   const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
   const step4Status = document.getElementById('step4Status');
   
+  // Store the full HTML content and chapters list
+  let cachedHtmlContent = null;
+  let chaptersList = [];
+  
   // Initialize popup
   initializePopup();
   
   function initializePopup() {
     // Set up event listeners
+    loadChaptersBtn.addEventListener('click', handleLoadChapters);
+    chapterSelect.addEventListener('change', handleChapterSelection);
     processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
     copyToNotionBtn.addEventListener('click', handleCopyToNotion);
     exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
     createFlashcardsBtn.addEventListener('click', handleCreateFlashcards);
     
     // Load saved URLs if available
-    chrome.storage.local.get(['kindleFileUrl', 'notionPageUrl', 'notionAuthToken', 'notebooklmUrl'], function(result) {
+    chrome.storage.local.get(['kindleFileUrl', 'selectedChapter', 'notionPageUrl', 'notionAuthToken', 'notebooklmUrl'], function(result) {
       if (result.kindleFileUrl) {
+        kindleFileUrlForChaptersInput.value = result.kindleFileUrl;
         kindleFileUrlInput.value = result.kindleFileUrl;
+      }
+      if (result.selectedChapter) {
+        // Restore selected chapter if available
+        chapterSelect.value = result.selectedChapter;
+        if (chapterSelect.value) {
+          chapterSelectionGroup.style.display = 'flex';
+        }
       }
       if (result.notionPageUrl) {
         notionPageUrlInput.value = result.notionPageUrl;
@@ -41,11 +60,115 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
+  async function handleLoadChapters() {
+    const url = kindleFileUrlForChaptersInput.value.trim();
+    
+    if (!url) {
+      showStatus(step0Status, 'Please enter a Kindle highlights file URL', 'error');
+      return;
+    }
+    
+    // Sync the URL to Step 1 input
+    kindleFileUrlInput.value = url;
+    
+    // Save URL for future use
+    chrome.storage.local.set({ kindleFileUrl: url });
+    
+    loadChaptersBtn.disabled = true;
+    showStatus(step0Status, 'Loading chapters...', 'info');
+    
+    try {
+      // Fetch the HTML file
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`);
+      }
+      
+      const htmlContent = await response.text();
+      cachedHtmlContent = htmlContent;
+      
+      // Extract chapters from the HTML
+      chaptersList = extractChapters(htmlContent);
+      
+      if (chaptersList.length === 0) {
+        showStatus(step0Status, 'No chapters found in the file', 'error');
+        chapterSelectionGroup.style.display = 'none';
+        return;
+      }
+      
+      // Populate the dropdown
+      chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
+      chaptersList.forEach((chapter, index) => {
+        const option = document.createElement('option');
+        option.value = chapter;
+        option.textContent = chapter;
+        chapterSelect.appendChild(option);
+      });
+      
+      // Show the chapter selection dropdown
+      chapterSelectionGroup.style.display = 'flex';
+      
+      showStatus(step0Status, `Found ${chaptersList.length} chapter(s)`, 'success');
+      
+    } catch (error) {
+      console.error('Error loading chapters:', error);
+      showStatus(step0Status, `Error: ${error.message}`, 'error');
+      chapterSelectionGroup.style.display = 'none';
+    } finally {
+      loadChaptersBtn.disabled = false;
+    }
+  }
+  
+  function extractChapters(htmlContent) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlContent, 'text/html');
+    
+    const bodyContainer = doc.querySelector('.bodyContainer');
+    if (!bodyContainer) {
+      return [];
+    }
+    
+    const chapters = [];
+    const children = bodyContainer.children;
+    
+    for (let i = 0; i < children.length; i++) {
+      const element = children[i];
+      if (element.classList.contains('sectionHeading')) {
+        const chapterName = element.textContent.trim();
+        if (chapterName) {
+          chapters.push(chapterName);
+        }
+      }
+    }
+    
+    return chapters;
+  }
+  
+  function handleChapterSelection() {
+    const selectedChapter = chapterSelect.value;
+    
+    if (selectedChapter) {
+      // Save the selected chapter
+      chrome.storage.local.set({ selectedChapter: selectedChapter });
+      showStatus(step0Status, `Chapter "${selectedChapter}" selected`, 'success');
+    } else {
+      chrome.storage.local.remove('selectedChapter');
+      showStatus(step0Status, '', '');
+    }
+  }
+  
   async function handleProcessKindleHighlights() {
     const url = kindleFileUrlInput.value.trim();
     
     if (!url) {
       showStatus(step1Status, 'Please enter a Kindle highlights file URL', 'error');
+      return;
+    }
+    
+    // Check if a chapter is selected
+    const selectedChapter = chapterSelect.value;
+    if (!selectedChapter) {
+      showStatus(step1Status, 'Please select a chapter first in Step 0', 'error');
       return;
     }
     
@@ -56,16 +179,24 @@ document.addEventListener('DOMContentLoaded', function() {
     showStatus(step1Status, 'Processing highlights...', 'info');
     
     try {
-      // Fetch the HTML file
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.status}`);
+      // Use cached HTML content if available, otherwise fetch it
+      let htmlContent = cachedHtmlContent;
+      if (!htmlContent) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch file: ${response.status}`);
+        }
+        htmlContent = await response.text();
+        cachedHtmlContent = htmlContent;
       }
       
-      const htmlContent = await response.text();
+      // Parse the HTML and extract highlights for the selected chapter
+      const processedContent = parseKindleHighlights(htmlContent, selectedChapter);
       
-      // Parse the HTML and extract highlights
-      const processedContent = parseKindleHighlights(htmlContent);
+      if (!processedContent || processedContent.trim() === '') {
+        showStatus(step1Status, 'No highlights found for the selected chapter', 'error');
+        return;
+      }
       
       // Copy to clipboard
       await navigator.clipboard.writeText(processedContent);
@@ -80,13 +211,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
-  function parseKindleHighlights(htmlContent) {
+  function parseKindleHighlights(htmlContent, selectedChapter = null) {
     // Create a temporary DOM parser
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlContent, 'text/html');
     
     let processedContent = '';
     let currentSubsection = '';
+    let isInSelectedChapter = false;
     
     // Get the body container and process all child elements in order
     const bodyContainer = doc.querySelector('.bodyContainer');
@@ -103,11 +235,24 @@ document.addEventListener('DOMContentLoaded', function() {
       if (element.classList.contains('sectionHeading')) {
         // Process section heading
         const sectionTitle = element.textContent.trim();
-        if (sectionTitle) {
-          processedContent += `\n## ${sectionTitle}\n\n`;
+        
+        // If a chapter is selected, only process highlights from that chapter
+        if (selectedChapter) {
+          isInSelectedChapter = (sectionTitle === selectedChapter);
+          // Add the chapter heading only if it's the selected one
+          if (isInSelectedChapter && sectionTitle) {
+            processedContent += `\n## ${sectionTitle}\n\n`;
+          }
+        } else {
+          // If no chapter selected, process all (backward compatibility)
+          if (sectionTitle) {
+            processedContent += `\n## ${sectionTitle}\n\n`;
+          }
+          isInSelectedChapter = true; // Process all if no selection
         }
-      } else if (element.classList.contains('noteHeading')) {
+      } else if (element.classList.contains('noteHeading') && isInSelectedChapter) {
         // Process highlight - get the corresponding noteText
+        // Only process if we're in the selected chapter
         const noteText = children[i + 1];
         
         if (noteText && noteText.classList.contains('noteText')) {

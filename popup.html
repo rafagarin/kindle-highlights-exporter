@@ -10,6 +10,27 @@
   <div class="container">
     <h1>Learning Workflow</h1>
     
+    <!-- Step 0: Select Chapter -->
+    <div class="step">
+      <h2>Step 0: Select Chapter</h2>
+      <div class="input-group horizontal">
+        <input 
+          type="url" 
+          id="kindleFileUrlForChapters" 
+          placeholder="Paste Kindle highlights file URL here..."
+          class="url-input"
+        />
+        <button id="loadChaptersBtn" class="action-btn">Load Chapters</button>
+      </div>
+      <div class="input-group" id="chapterSelectionGroup" style="display: none;">
+        <label for="chapterSelect">Select a chapter:</label>
+        <select id="chapterSelect" class="url-input">
+          <option value="">-- Select a chapter --</option>
+        </select>
+      </div>
+      <div id="step0Status" class="status"></div>
+    </div>
+    
     <!-- Step 1: Process Kindle Highlights -->
     <div class="step">
       <h2>Step 1: Process Kindle Highlights</h2>

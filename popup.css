@@ -61,6 +61,12 @@ h2 {
   box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
 }
 
+label {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
 .action-btn {
   background-color: #4285f4;
   color: white;
