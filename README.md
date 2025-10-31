@@ -29,18 +29,18 @@ A Chrome extension that automates the learning workflow from Kindle highlights t
    - Click "Load unpacked" and select this folder
 
 2. **Configure API Keys (Optional):**
-   - **Gemini API Key** (Step 1): Optional - for AI-powered highlight processing
+   - **Gemini API Key** (Step 2): Optional - for AI-powered highlight processing
      - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-   - **Notion Integration Token** (Step 2): Required for Notion integration
+   - **Notion Integration Token** (Step 3): Required for Notion integration
      - Create an integration at [Notion Integrations](https://www.notion.so/my-integrations)
      - Grant it access to your workspace/database
 
 3. **Use the extension:**
    - Click the extension icon in the toolbar to open the side panel
    - Follow the steps sequentially:
-     1. Load your Kindle highlights HTML file URL and select a chapter
-     2. Process highlights (optionally with Gemini AI)
-     3. Copy to Notion (requires database URL and integration token)
-     4. Export to NotebookLM (opens notebook and adds content)
-     5. Create flashcards (automates flashcard creation in NotebookLM)
+     1. Load highlights file - Select your Kindle highlights HTML file
+     2. Select chapter to process - Choose a chapter and process highlights (optionally with Gemini AI)
+     3. Copy notes to Notion - Copy processed highlights to Notion database
+     4. Add source to NotebookLM - Export content to NotebookLM notebook
+     5. Create flashcards - Automate flashcard creation in NotebookLM
 

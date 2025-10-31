@@ -18,9 +18,9 @@
     
     <!-- Steps Tab -->
     <div id="stepsTab" class="tab-content active">
-      <!-- Step 0: Load Highlights File -->
+      <!-- Step 1: Load highlights file -->
       <div class="step">
-        <h2>Step 0: Load Highlights File</h2>
+        <h2>1. Load highlights file</h2>
         <div class="input-group">
           <label for="kindleFileInput">Select Kindle highlights file:</label>
           <input 
@@ -34,9 +34,9 @@
         <div id="step0Status" class="status"></div>
       </div>
       
-      <!-- Step 1: Select Chapter To Process -->
+      <!-- Step 2: Select chapter to process -->
       <div class="step">
-        <h2>Step 1: Select Chapter To Process</h2>
+        <h2>2. Select chapter to process</h2>
         <div class="input-group" id="chapterSelectionGroup" style="display: none;">
           <label for="chapterSelect">Select a chapter:</label>
           <select id="chapterSelect" class="url-input">
@@ -49,39 +49,43 @@
         <div id="step1Status" class="status"></div>
       </div>
     
-    <!-- Step 2: Copy to Notion -->
+    <!-- Step 3: Copy notes to Notion -->
     <div class="step">
-      <h2>Step 2: Copy to Notion</h2>
-      <div class="input-group horizontal">
+      <h2>3. Copy notes to Notion</h2>
+      <div class="input-group">
         <input 
           type="url" 
           id="notionPageUrl" 
           placeholder="Paste Notion database/data source URL here..."
           class="url-input"
         />
+      </div>
+      <div class="input-group">
         <button id="copyToNotionBtn" class="action-btn">Copy to Notion</button>
       </div>
       <div id="step2Status" class="status"></div>
     </div>
     
-    <!-- Step 3: Export to NotebookLM -->
+    <!-- Step 4: Add source to NotebookLM -->
     <div class="step">
-      <h2>Step 3: Export to NotebookLM</h2>
-      <div class="input-group horizontal">
+      <h2>4. Add source to NotebookLM</h2>
+      <div class="input-group">
         <input 
           type="url" 
           id="notebooklmUrl" 
           placeholder="Paste NotebookLM notebook URL here..."
           class="url-input"
         />
+      </div>
+      <div class="input-group">
         <button id="exportToNotebooklmBtn" class="action-btn">Export to NotebookLM</button>
       </div>
       <div id="step3Status" class="status"></div>
     </div>
     
-    <!-- Step 4: Create Flashcards -->
+    <!-- Step 5: Create flashcards -->
     <div class="step">
-      <h2>Step 4: Create Flashcards</h2>
+      <h2>5. Create flashcards</h2>
       <div class="input-group">
         <button id="createFlashcardsBtn" class="action-btn">Create Flashcards</button>
       </div>
@@ -101,7 +105,7 @@
             placeholder="Enter Gemini API key (optional, for AI processing)..."
             class="url-input"
           />
-          <p class="help-text">Used for AI-powered highlight processing in Step 1. Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
+          <p class="help-text">Used for AI-powered highlight processing in Step 2. Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
         </div>
         <div class="input-group">
           <label for="configNotionAuthToken">Notion Integration Token</label>
@@ -111,7 +115,7 @@
             placeholder="Enter Notion integration token..."
             class="url-input"
           />
-          <p class="help-text">Required for Step 2. Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> and grant it access to your workspace/database.</p>
+          <p class="help-text">Required for Step 3. Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> and grant it access to your workspace/database.</p>
         </div>
         <div id="configStatus" class="status"></div>
         <button id="saveConfigBtn" class="action-btn">Save Configuration</button>

@@ -18,7 +18,7 @@ export async function exportToNotebooklm(url, content, statusCallback) {
     if (!content) {
       const clipboardContent = await navigator.clipboard.readText();
       if (!clipboardContent) {
-        statusCallback('No content in clipboard. Please run Step 1 first.', 'error');
+        statusCallback('No content in clipboard. Please run Step 2 first.', 'error');
         return false;
       }
       content = clipboardContent;

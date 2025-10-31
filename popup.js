@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // Save to storage
       saveKindleFile(file.name, fileContent);
       
-      // Extract chapters and populate the dropdown in Step 1
+      // Extract chapters and populate the dropdown in Step 2
       const chapters = extractChapters(fileContent);
       chaptersList = chapters;
       
@@ -245,7 +245,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (previouslySelectedChapter && chapters.includes(previouslySelectedChapter)) {
           showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Previous selection preserved.`, 'success');
         } else {
-          showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Select a chapter in Step 1.`, 'success');
+          showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Select a chapter in Step 2.`, 'success');
         }
       } else {
         chapterSelect.value = '';
@@ -368,7 +368,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check if a chapter is selected
     const selectedChapter = chapterSelect.value;
     if (!selectedChapter) {
-      showStatus(step2Status, 'Please select a chapter first in Step 0', 'error');
+      showStatus(step2Status, 'Please select a chapter first in Step 2', 'error');
       return;
     }
     
@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const clipboardContent = await navigator.clipboard.readText();
       
       if (!clipboardContent) {
-        showStatus(step2Status, 'No content in clipboard. Please run Step 1 first.', 'error');
+        showStatus(step2Status, 'No content in clipboard. Please run Step 2 first.', 'error');
         return;
       }
       
@@ -396,7 +396,7 @@ document.addEventListener('DOMContentLoaded', function() {
       // Get book title from cached HTML
       const bookTitle = extractBookTitle(cachedHtmlContent);
       if (!bookTitle) {
-        showStatus(step2Status, 'Could not extract book title. Please reload chapters in Step 0.', 'error');
+        showStatus(step2Status, 'Could not extract book title. Please reload file in Step 1.', 'error');
         return;
       }
       
