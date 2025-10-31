@@ -22,6 +22,48 @@ h1 {
   text-align: center;
 }
 
+/* Tab Navigation */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 16px;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: -2px;
+}
+
+.tab-btn:hover {
+  color: #333;
+  background-color: #f9f9f9;
+}
+
+.tab-btn.active {
+  color: #4285f4;
+  border-bottom-color: #4285f4;
+  background-color: transparent;
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
 .step {
   margin-bottom: 25px;
   padding: 15px;
@@ -110,7 +152,18 @@ label {
   color: #2196f3;
 }
 
-#content {
-  font-size: 14px;
+.help-text {
+  font-size: 12px;
   color: #666;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+.help-text a {
+  color: #4285f4;
+  text-decoration: none;
+}
+
+.help-text a:hover {
+  text-decoration: underline;
 }

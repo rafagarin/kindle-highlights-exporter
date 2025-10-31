@@ -10,7 +10,15 @@
   <div class="container">
     <h1>Learning Workflow</h1>
     
-    <!-- Step 0: Select Chapter -->
+    <!-- Tab Navigation -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="steps">Steps</button>
+      <button class="tab-btn" data-tab="config">Config</button>
+    </div>
+    
+    <!-- Steps Tab -->
+    <div id="stepsTab" class="tab-content active">
+      <!-- Step 0: Select Chapter -->
     <div class="step">
       <h2>Step 0: Select Chapter</h2>
       <div class="input-group horizontal">
@@ -43,14 +51,6 @@
         />
         <button id="processKindleBtn" class="action-btn">Process Highlights</button>
       </div>
-      <div class="input-group">
-        <input 
-          type="password" 
-          id="geminiApiKey" 
-          placeholder="Enter Gemini API key (optional, for AI processing)..."
-          class="url-input"
-        />
-      </div>
       <div id="step1Status" class="status"></div>
     </div>
     
@@ -65,14 +65,6 @@
           class="url-input"
         />
         <button id="copyToNotionBtn" class="action-btn">Copy to Notion</button>
-      </div>
-      <div class="input-group">
-        <input 
-          type="password" 
-          id="notionAuthToken" 
-          placeholder="Enter Notion integration token..."
-          class="url-input"
-        />
       </div>
       <div id="step2Status" class="status"></div>
     </div>
@@ -100,9 +92,35 @@
       </div>
       <div id="step4Status" class="status"></div>
     </div>
+    </div>
     
-    <div id="content">
-      <!-- Additional steps will be added here -->
+    <!-- Config Tab -->
+    <div id="configTab" class="tab-content">
+      <div class="step">
+        <h2>API Keys & Configuration</h2>
+        <div class="input-group">
+          <label for="configGeminiApiKey">Gemini API Key</label>
+          <input 
+            type="password" 
+            id="configGeminiApiKey" 
+            placeholder="Enter Gemini API key (optional, for AI processing)..."
+            class="url-input"
+          />
+          <p class="help-text">Used for AI-powered highlight processing in Step 1. Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
+        </div>
+        <div class="input-group">
+          <label for="configNotionAuthToken">Notion Integration Token</label>
+          <input 
+            type="password" 
+            id="configNotionAuthToken" 
+            placeholder="Enter Notion integration token..."
+            class="url-input"
+          />
+          <p class="help-text">Required for Step 2. Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> and grant it access to your workspace/database.</p>
+        </div>
+        <div id="configStatus" class="status"></div>
+        <button id="saveConfigBtn" class="action-btn">Save Configuration</button>
+      </div>
     </div>
   </div>
   <script type="module" src="popup.js"></script>

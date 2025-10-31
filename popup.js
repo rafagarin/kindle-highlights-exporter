@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
   const notionPageUrlInput = document.getElementById('notionPageUrl');
-  const notionAuthTokenInput = document.getElementById('notionAuthToken');
   const copyToNotionBtn = document.getElementById('copyToNotionBtn');
   const step2Status = document.getElementById('step2Status');
   const notebooklmUrlInput = document.getElementById('notebooklmUrl');
@@ -25,7 +24,17 @@ document.addEventListener('DOMContentLoaded', function() {
   const step3Status = document.getElementById('step3Status');
   const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
   const step4Status = document.getElementById('step4Status');
-  const geminiApiKeyInput = document.getElementById('geminiApiKey');
+  
+  // Config tab elements
+  const configGeminiApiKeyInput = document.getElementById('configGeminiApiKey');
+  const configNotionAuthTokenInput = document.getElementById('configNotionAuthToken');
+  const saveConfigBtn = document.getElementById('saveConfigBtn');
+  const configStatus = document.getElementById('configStatus');
+  
+  // Tab elements
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const stepsTab = document.getElementById('stepsTab');
+  const configTab = document.getElementById('configTab');
   
   // Store the full HTML content and chapters list
   let cachedHtmlContent = null;
@@ -35,6 +44,14 @@ document.addEventListener('DOMContentLoaded', function() {
   initializePopup();
   
   function initializePopup() {
+    // Set up tab switching
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.getAttribute('data-tab');
+        switchTab(targetTab);
+      });
+    });
+    
     // Set up event listeners
     loadChaptersBtn.addEventListener('click', handleLoadChapters);
     chapterSelect.addEventListener('change', handleChapterSelection);
@@ -42,6 +59,7 @@ document.addEventListener('DOMContentLoaded', function() {
     copyToNotionBtn.addEventListener('click', handleCopyToNotion);
     exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
     createFlashcardsBtn.addEventListener('click', handleCreateFlashcards);
+    saveConfigBtn.addEventListener('click', handleSaveConfig);
     
     // Load saved data
     loadSavedData().then(result => {
@@ -58,16 +76,76 @@ document.addEventListener('DOMContentLoaded', function() {
       if (result.notionPageUrl) {
         notionPageUrlInput.value = result.notionPageUrl;
       }
-      if (result.notionAuthToken) {
-        notionAuthTokenInput.value = result.notionAuthToken;
-      }
       if (result.notebooklmUrl) {
         notebooklmUrlInput.value = result.notebooklmUrl;
       }
       if (result.geminiApiKey) {
-        geminiApiKeyInput.value = result.geminiApiKey;
+        configGeminiApiKeyInput.value = result.geminiApiKey;
+      }
+      if (result.notionAuthToken) {
+        configNotionAuthTokenInput.value = result.notionAuthToken;
       }
     });
+  }
+  
+  function switchTab(tabName) {
+    // Update tab buttons
+    tabButtons.forEach(btn => {
+      if (btn.getAttribute('data-tab') === tabName) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    
+    // Update tab content
+    if (tabName === 'steps') {
+      stepsTab.classList.add('active');
+      configTab.classList.remove('active');
+    } else if (tabName === 'config') {
+      configTab.classList.add('active');
+      stepsTab.classList.remove('active');
+    }
+  }
+  
+  async function handleSaveConfig() {
+    const geminiApiKey = configGeminiApiKeyInput.value.trim();
+    const notionAuthToken = configNotionAuthTokenInput.value.trim();
+    
+    saveConfigBtn.disabled = true;
+    showStatus(configStatus, 'Saving configuration...', 'info');
+    
+    try {
+      if (geminiApiKey) {
+        saveGeminiApiKey(geminiApiKey);
+      } else {
+        chrome.storage.local.remove('geminiApiKey');
+      }
+      
+      if (notionAuthToken) {
+        const currentNotionUrl = notionPageUrlInput.value.trim();
+        if (currentNotionUrl) {
+          saveNotionConfig(currentNotionUrl, notionAuthToken);
+        } else {
+          chrome.storage.local.set({ notionAuthToken: notionAuthToken });
+        }
+      } else {
+        chrome.storage.local.remove('notionAuthToken');
+      }
+      
+      showStatus(configStatus, 'Configuration saved successfully!', 'success');
+      
+      // Clear status after 2 seconds
+      setTimeout(() => {
+        showStatus(configStatus, '', '');
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Error saving config:', error);
+      showStatus(configStatus, `Error: ${error.message}`, 'error');
+    } finally {
+      saveConfigBtn.disabled = false;
+    }
   }
   
   async function handleLoadChapters() {
@@ -170,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       
       // Process with Gemini API if API key is provided
-      const geminiApiKey = geminiApiKeyInput.value.trim();
+      const geminiApiKey = configGeminiApiKeyInput.value.trim();
       if (geminiApiKey) {
         saveGeminiApiKey(geminiApiKey);
         showStatus(step1Status, 'Processing highlights with Gemini AI...', 'info');
@@ -204,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   async function handleCopyToNotion() {
     const databaseUrl = notionPageUrlInput.value.trim();
-    const authToken = notionAuthTokenInput.value.trim();
+    const authToken = configNotionAuthTokenInput.value.trim();
     
     if (!databaseUrl) {
       showStatus(step2Status, 'Please enter a Notion database/data source URL', 'error');
