@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const selectedFileName = document.getElementById('selectedFileName');
   const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
-  const notionPageUrlInput = document.getElementById('notionPageUrl');
   const copyToNotionBtn = document.getElementById('copyToNotionBtn');
   const step2Status = document.getElementById('step2Status');
   const exportToNotebooklmBtn = document.getElementById('exportToNotebooklmBtn');
@@ -26,6 +25,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Config tab elements
   const configGeminiApiKeyInput = document.getElementById('configGeminiApiKey');
   const configNotionAuthTokenInput = document.getElementById('configNotionAuthToken');
+  const configNotionDatabaseUrlInput = document.getElementById('configNotionDatabaseUrl');
   const saveConfigBtn = document.getElementById('saveConfigBtn');
   const configStatus = document.getElementById('configStatus');
   
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       if (result.notionPageUrl) {
-        notionPageUrlInput.value = result.notionPageUrl;
+        configNotionDatabaseUrlInput.value = result.notionPageUrl;
       }
       if (result.geminiApiKey) {
         configGeminiApiKeyInput.value = result.geminiApiKey;
@@ -130,6 +130,7 @@ document.addEventListener('DOMContentLoaded', function() {
   async function handleSaveConfig() {
     const geminiApiKey = configGeminiApiKeyInput.value.trim();
     const notionAuthToken = configNotionAuthTokenInput.value.trim();
+    const notionDatabaseUrl = configNotionDatabaseUrlInput.value.trim();
     
     saveConfigBtn.disabled = true;
     showStatus(configStatus, 'Saving configuration...', 'info');
@@ -141,15 +142,19 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.storage.local.remove('geminiApiKey');
       }
       
-      if (notionAuthToken) {
-        const currentNotionUrl = notionPageUrlInput.value.trim();
-        if (currentNotionUrl) {
-          saveNotionConfig(currentNotionUrl, notionAuthToken);
-        } else {
-          chrome.storage.local.set({ notionAuthToken: notionAuthToken });
-        }
+      if (notionAuthToken && notionDatabaseUrl) {
+        saveNotionConfig(notionDatabaseUrl, notionAuthToken);
       } else {
-        chrome.storage.local.remove('notionAuthToken');
+        if (notionAuthToken) {
+          chrome.storage.local.set({ notionAuthToken: notionAuthToken });
+        } else {
+          chrome.storage.local.remove('notionAuthToken');
+        }
+        if (notionDatabaseUrl) {
+          chrome.storage.local.set({ notionPageUrl: notionDatabaseUrl });
+        } else {
+          chrome.storage.local.remove('notionPageUrl');
+        }
       }
       
       showStatus(configStatus, 'Configuration saved successfully!', 'success');
@@ -348,16 +353,16 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   async function handleCopyToNotion() {
-    const databaseUrl = notionPageUrlInput.value.trim();
+    const databaseUrl = configNotionDatabaseUrlInput.value.trim();
     const authToken = configNotionAuthTokenInput.value.trim();
     
     if (!databaseUrl) {
-      showStatus(step2Status, 'Please enter a Notion database/data source URL', 'error');
+      showStatus(step2Status, 'Please enter a Notion database URL in the Config tab', 'error');
       return;
     }
     
     if (!authToken) {
-      showStatus(step2Status, 'Please enter a Notion integration token', 'error');
+      showStatus(step2Status, 'Please enter a Notion integration token in the Config tab', 'error');
       return;
     }
     

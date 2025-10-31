@@ -53,14 +53,6 @@
     <div class="step">
       <h2>3. Copy notes to Notion</h2>
       <div class="input-group">
-        <input 
-          type="url" 
-          id="notionPageUrl" 
-          placeholder="Paste Notion database/data source URL here..."
-          class="url-input"
-        />
-      </div>
-      <div class="input-group">
         <button id="copyToNotionBtn" class="action-btn">Copy to Notion</button>
       </div>
       <div id="step2Status" class="status"></div>
@@ -109,6 +101,16 @@
             class="url-input"
           />
           <p class="help-text">Required for Step 3. Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank">Notion Integrations</a> and grant it access to your workspace/database.</p>
+        </div>
+        <div class="input-group">
+          <label for="configNotionDatabaseUrl">Notion Database URL</label>
+          <input 
+            type="url" 
+            id="configNotionDatabaseUrl" 
+            placeholder="Paste Notion database URL here..."
+            class="url-input"
+          />
+          <p class="help-text">Required for Step 3. Open your Notion database, click the "..." menu in the top-right, select "Copy link", and paste it here. The database must have a "Book Name" property, and the integration must have access to the database.</p>
         </div>
         <div id="configStatus" class="status"></div>
         <button id="saveConfigBtn" class="action-btn">Save Configuration</button>
