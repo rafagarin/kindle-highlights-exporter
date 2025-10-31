@@ -45,6 +45,28 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     }
   };
   
+  if (request.action === 'openNotebookAndExport') {
+    loadNotebooklmModule()
+      .then(module => {
+        return module.openNotebookByName(request.bookName)
+          .then(() => {
+            // Wait for notebook page to load
+            return new Promise(resolve => setTimeout(resolve, 2000));
+          })
+          .then(() => {
+            return module.handleNotebooklmExport(request.content, request.sourceName);
+          });
+      })
+      .then(result => {
+        safeSendResponse(result);
+      })
+      .catch(error => {
+        console.error('Error in openNotebookAndExport:', error);
+        safeSendResponse({success: false, error: error.message});
+      });
+    return true; // Keep message channel open for async response
+  }
+  
   if (request.action === 'exportToNotebooklm') {
     loadNotebooklmModule()
       .then(module => {

@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const notionPageUrlInput = document.getElementById('notionPageUrl');
   const copyToNotionBtn = document.getElementById('copyToNotionBtn');
   const step2Status = document.getElementById('step2Status');
-  const notebooklmUrlInput = document.getElementById('notebooklmUrl');
   const exportToNotebooklmBtn = document.getElementById('exportToNotebooklmBtn');
   const step3Status = document.getElementById('step3Status');
   const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
@@ -98,9 +97,6 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (result.notionPageUrl) {
         notionPageUrlInput.value = result.notionPageUrl;
-      }
-      if (result.notebooklmUrl) {
-        notebooklmUrlInput.value = result.notebooklmUrl;
       }
       if (result.geminiApiKey) {
         configGeminiApiKeyInput.value = result.geminiApiKey;
@@ -436,8 +432,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   async function handleExportToNotebooklm() {
-    const url = notebooklmUrlInput.value.trim();
-    saveNotebooklmUrl(url);
+    // Check if we have cached HTML content
+    if (!cachedHtmlContent) {
+      showStatus(step3Status, 'Please load a Kindle highlights file first in Step 1', 'error');
+      return;
+    }
+    
+    // Get book title from cached HTML
+    const bookTitle = extractBookTitle(cachedHtmlContent);
+    if (!bookTitle) {
+      showStatus(step3Status, 'Could not extract book title. Please reload file in Step 1.', 'error');
+      return;
+    }
     
     // Get the selected chapter name for renaming the source
     const selectedChapter = chapterSelect.value;
@@ -446,7 +452,7 @@ document.addEventListener('DOMContentLoaded', function() {
     exportToNotebooklmBtn.disabled = true;
     
     try {
-      const success = await exportToNotebooklm(url, null, (message, type) => {
+      const success = await exportToNotebooklm(bookTitle, null, (message, type) => {
         showStatus(step3Status, message, type);
       }, sourceName);
     } finally {

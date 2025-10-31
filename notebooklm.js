@@ -2,15 +2,15 @@
 
 /**
  * Export content to NotebookLM
- * @param {string} url - NotebookLM notebook URL
+ * @param {string} bookName - Name of the book/notebook to open
  * @param {string} content - Content to export
  * @param {Function} statusCallback - Callback for status updates
  * @param {string} sourceName - Name to use for the source (optional)
  * @returns {Promise<boolean>} Success status
  */
-export async function exportToNotebooklm(url, content, statusCallback, sourceName = null) {
-  if (!url) {
-    statusCallback('Please enter a NotebookLM notebook URL', 'error');
+export async function exportToNotebooklm(bookName, content, statusCallback, sourceName = null) {
+  if (!bookName) {
+    statusCallback('Please provide a book name', 'error');
     return false;
   }
   
@@ -27,17 +27,18 @@ export async function exportToNotebooklm(url, content, statusCallback, sourceNam
     
     statusCallback('Opening NotebookLM...', 'info');
     
-    // Open the NotebookLM page in a new tab
-    const tab = await chrome.tabs.create({ url: url });
+    // Open the NotebookLM welcome page in a new tab
+    const tab = await chrome.tabs.create({ url: 'https://notebooklm.google.com/' });
     
-    // Wait for the page to load - check if page is ready instead of fixed timeout
+    // Wait for the page to load
     statusCallback('Waiting for NotebookLM to load...', 'info');
     await waitForTabReady(tab.id);
     
-    // Send message to content script to automate the process
+    // Send message to content script to open the notebook and automate the process
     return new Promise((resolve) => {
       chrome.tabs.sendMessage(tab.id, { 
-        action: 'exportToNotebooklm',
+        action: 'openNotebookAndExport',
+        bookName: bookName,
         content: content,
         sourceName: sourceName
       }, function(response) {
@@ -240,6 +241,99 @@ export function waitForElementToDisappear(selector, timeout = 3000) {
       }
     }, 100);
   });
+}
+
+/**
+ * Open a NotebookLM notebook by book name
+ * @param {string} bookName - Name of the book/notebook to open
+ * @returns {Promise<void>}
+ */
+export async function openNotebookByName(bookName) {
+  try {
+    console.log(`Opening notebook with name: "${bookName}"...`);
+    
+    // Wait for the projects page to load
+    await waitForElement('project-button, .project-button, welcome-page', 10000, 100);
+    
+    // Wait a bit more for projects to fully render
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Find all project buttons
+    const projectButtons = document.querySelectorAll('project-button');
+    
+    if (projectButtons.length === 0) {
+      throw new Error('No notebooks found on the page');
+    }
+    
+    console.log(`Found ${projectButtons.length} notebook(s)`);
+    
+    let targetButton = null;
+    
+    // Look for a project button with matching title
+    for (let button of projectButtons) {
+      // Find the title element within the project button
+      const titleElement = button.querySelector('.project-button-title, [class*="project-button-title"], span[id$="-title"]');
+      
+      if (titleElement) {
+        const titleText = titleElement.textContent.trim();
+        console.log(`Checking notebook: "${titleText}"`);
+        
+        // Check for exact match first
+        if (titleText === bookName) {
+          targetButton = button;
+          console.log(`Found exact match: "${titleText}"`);
+          break;
+        }
+        
+        // Check for partial match (case-insensitive)
+        if (titleText.toLowerCase().includes(bookName.toLowerCase()) || 
+            bookName.toLowerCase().includes(titleText.toLowerCase())) {
+          targetButton = button;
+          console.log(`Found partial match: "${titleText}"`);
+          break;
+        }
+      }
+    }
+    
+    if (!targetButton) {
+      // Fallback: try finding by text content in the entire button
+      for (let button of projectButtons) {
+        const buttonText = button.textContent || '';
+        if (buttonText.includes(bookName)) {
+          targetButton = button;
+          console.log(`Found by text content: "${buttonText.substring(0, 50)}..."`);
+          break;
+        }
+      }
+    }
+    
+    if (!targetButton) {
+      throw new Error(`Could not find notebook with name: "${bookName}"`);
+    }
+    
+    // Find the clickable element within the project button (the mat-card or project-button-box)
+    let clickableElement = targetButton.querySelector('mat-card, .project-button-card, .project-button-box, [role="button"]');
+    
+    if (!clickableElement) {
+      // Fallback: click the project button itself
+      clickableElement = targetButton;
+    }
+    
+    console.log('Clicking notebook button...');
+    clickableElement.click();
+    
+    // Wait for the notebook page to load (check for URL change or notebook-specific elements)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Wait for notebook-specific elements to appear
+    await waitForElement('section.source-panel, button[aria-label="Add source"], .add-source-button', 10000, 200);
+    
+    console.log('Notebook opened successfully');
+    
+  } catch (error) {
+    console.error('Error opening notebook:', error);
+    throw error;
+  }
 }
 
 /**
