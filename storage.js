@@ -12,7 +12,9 @@ export function loadSavedData() {
       'notionPageUrl',
       'notionAuthToken',
       'notebooklmUrl',
-      'geminiApiKey'
+      'geminiApiKey',
+      'kindleFileContent',
+      'kindleFileName'
     ], function(result) {
       resolve(result);
     });
@@ -65,5 +67,24 @@ export function saveNotebooklmUrl(url) {
  */
 export function saveGeminiApiKey(apiKey) {
   chrome.storage.local.set({ geminiApiKey: apiKey });
+}
+
+/**
+ * Save Kindle file content and filename
+ * @param {string} fileName - File name
+ * @param {string} fileContent - File content
+ */
+export function saveKindleFile(fileName, fileContent) {
+  // Try to save, but handle quota errors gracefully
+  chrome.storage.local.set({ 
+    kindleFileName: fileName,
+    kindleFileContent: fileContent
+  }, function() {
+    if (chrome.runtime.lastError) {
+      console.warn('Could not save file content to storage:', chrome.runtime.lastError);
+      // Still save the filename at least
+      chrome.storage.local.set({ kindleFileName: fileName });
+    }
+  });
 }
 

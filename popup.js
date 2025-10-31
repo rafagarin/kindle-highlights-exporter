@@ -4,16 +4,15 @@ import { extractNotionDatabaseId, getDatabaseDataSourceAndTitleProperty, convert
 import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
 import { processHighlightsWithGemini } from './gemini.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveKindleFile } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
-  const kindleFileUrlForChaptersInput = document.getElementById('kindleFileUrlForChapters');
-  const loadChaptersBtn = document.getElementById('loadChaptersBtn');
   const chapterSelect = document.getElementById('chapterSelect');
   const chapterSelectionGroup = document.getElementById('chapterSelectionGroup');
   const step0Status = document.getElementById('step0Status');
-  const kindleFileUrlInput = document.getElementById('kindleFileUrl');
+  const kindleFileInput = document.getElementById('kindleFileInput');
+  const selectedFileName = document.getElementById('selectedFileName');
   const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
   const notionPageUrlInput = document.getElementById('notionPageUrl');
@@ -53,8 +52,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Set up event listeners
-    loadChaptersBtn.addEventListener('click', handleLoadChapters);
     chapterSelect.addEventListener('change', handleChapterSelection);
+    kindleFileInput.addEventListener('change', handleFileSelection);
     processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
     copyToNotionBtn.addEventListener('click', handleCopyToNotion);
     exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
@@ -63,9 +62,31 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load saved data
     loadSavedData().then(result => {
-      if (result.kindleFileUrl) {
-        kindleFileUrlForChaptersInput.value = result.kindleFileUrl;
-        kindleFileUrlInput.value = result.kindleFileUrl;
+      if (result.kindleFileName && result.kindleFileContent) {
+        selectedFileName.innerHTML = `✓ Loaded: <strong>${result.kindleFileName}</strong> <span class="file-status-note">(from previous session)</span>`;
+        selectedFileName.style.display = 'block';
+        selectedFileName.classList.add('file-loaded');
+      } else if (result.kindleFileName) {
+        selectedFileName.innerHTML = `Selected: <strong>${result.kindleFileName}</strong>`;
+        selectedFileName.style.display = 'block';
+      }
+      if (result.kindleFileContent) {
+        cachedHtmlContent = result.kindleFileContent;
+        // Extract chapters from cached content
+        if (cachedHtmlContent) {
+          const chapters = extractChapters(cachedHtmlContent);
+          if (chapters.length > 0) {
+            chaptersList = chapters;
+            chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
+            chapters.forEach((chapter) => {
+              const option = document.createElement('option');
+              option.value = chapter;
+              option.textContent = chapter;
+              chapterSelect.appendChild(option);
+            });
+            chapterSelectionGroup.style.display = 'flex';
+          }
+        }
       }
       if (result.selectedChapter) {
         chapterSelect.value = result.selectedChapter;
@@ -148,95 +169,122 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   
-  async function handleLoadChapters() {
-    const url = kindleFileUrlForChaptersInput.value.trim();
-    
-    if (!url) {
-      showStatus(step0Status, 'Please enter a Kindle highlights file URL', 'error');
-      return;
-    }
-    
-    // Sync the URL to Step 1 input
-    kindleFileUrlInput.value = url;
-    saveKindleUrl(url);
-    
-    loadChaptersBtn.disabled = true;
-    showStatus(step0Status, 'Loading chapters...', 'info');
-    
-    try {
-      // Fetch the HTML file
-      const htmlContent = await fetchKindleHtml(url);
-      cachedHtmlContent = htmlContent;
-      
-      // Extract chapters from the HTML
-      chaptersList = extractChapters(htmlContent);
-      
-      if (chaptersList.length === 0) {
-        showStatus(step0Status, 'No chapters found in the file', 'error');
-        chapterSelectionGroup.style.display = 'none';
-        return;
-      }
-      
-      // Populate the dropdown
-      chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
-      chaptersList.forEach((chapter) => {
-        const option = document.createElement('option');
-        option.value = chapter;
-        option.textContent = chapter;
-        chapterSelect.appendChild(option);
-      });
-      
-      // Show the chapter selection dropdown
-      chapterSelectionGroup.style.display = 'flex';
-      
-      showStatus(step0Status, `Found ${chaptersList.length} chapter(s)`, 'success');
-      
-    } catch (error) {
-      console.error('Error loading chapters:', error);
-      showStatus(step0Status, `Error: ${error.message}`, 'error');
-      chapterSelectionGroup.style.display = 'none';
-    } finally {
-      loadChaptersBtn.disabled = false;
-    }
-  }
-  
   function handleChapterSelection() {
     const selectedChapter = chapterSelect.value;
     saveSelectedChapter(selectedChapter);
     
     if (selectedChapter) {
-      showStatus(step0Status, `Chapter "${selectedChapter}" selected`, 'success');
+      showStatus(step1Status, `Chapter "${selectedChapter}" selected`, 'success');
     } else {
-      showStatus(step0Status, '', '');
+      showStatus(step1Status, '', '');
     }
   }
   
-  async function handleProcessKindleHighlights() {
-    const url = kindleFileUrlInput.value.trim();
+  async function handleFileSelection(event) {
+    const file = event.target.files[0];
+    if (!file) {
+      selectedFileName.textContent = '';
+      selectedFileName.style.display = 'none';
+      cachedHtmlContent = null;
+      chaptersList = [];
+      chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
+      chapterSelectionGroup.style.display = 'none';
+      return;
+    }
     
-    if (!url) {
-      showStatus(step1Status, 'Please enter a Kindle highlights file URL', 'error');
+    // Validate file type
+    if (!file.name.toLowerCase().endsWith('.html') && !file.name.toLowerCase().endsWith('.htm')) {
+      showStatus(step0Status, 'Please select an HTML file', 'error');
+      kindleFileInput.value = '';
+      return;
+    }
+    
+    selectedFileName.innerHTML = `✓ Selected: <strong>${file.name}</strong>`;
+    selectedFileName.style.display = 'block';
+    selectedFileName.classList.remove('file-loaded');
+    
+    // Read file content
+    try {
+      showStatus(step0Status, 'Loading file...', 'info');
+      const fileContent = await readFileAsText(file);
+      cachedHtmlContent = fileContent;
+      
+      // Save to storage
+      saveKindleFile(file.name, fileContent);
+      
+      // Extract chapters and populate the dropdown in Step 1
+      const chapters = extractChapters(fileContent);
+      chaptersList = chapters;
+      
+      if (chapters.length > 0) {
+        chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
+        chapters.forEach((chapter) => {
+          const option = document.createElement('option');
+          option.value = chapter;
+          option.textContent = chapter;
+          chapterSelect.appendChild(option);
+        });
+        chapterSelectionGroup.style.display = 'flex';
+        showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Select a chapter in Step 1.`, 'success');
+      } else {
+        showStatus(step0Status, 'File loaded, but no chapters found', 'error');
+        chapterSelectionGroup.style.display = 'none';
+      }
+      
+      // Clear status after 3 seconds
+      setTimeout(() => {
+        showStatus(step0Status, '', '');
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error reading file:', error);
+      showStatus(step0Status, `Error reading file: ${error.message}`, 'error');
+      kindleFileInput.value = '';
+      selectedFileName.textContent = '';
+      selectedFileName.style.display = 'none';
+      chapterSelectionGroup.style.display = 'none';
+    }
+  }
+  
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+  
+  async function handleProcessKindleHighlights() {
+    // Check if a file is selected or if we have cached content
+    if (!cachedHtmlContent && kindleFileInput.files.length === 0) {
+      showStatus(step1Status, 'Please select a Kindle highlights file first', 'error');
       return;
     }
     
     // Check if a chapter is selected
     const selectedChapter = chapterSelect.value;
     if (!selectedChapter) {
-      showStatus(step1Status, 'Please select a chapter first in Step 0', 'error');
+      showStatus(step1Status, 'Please select a chapter first', 'error');
       return;
     }
-    
-    saveKindleUrl(url);
     
     processKindleBtn.disabled = true;
     showStatus(step1Status, 'Processing highlights...', 'info');
     
     try {
-      // Use cached HTML content if available, otherwise fetch it
+      // Get HTML content from cached content or read from file input
       let htmlContent = cachedHtmlContent;
-      if (!htmlContent) {
-        htmlContent = await fetchKindleHtml(url);
+      if (!htmlContent && kindleFileInput.files.length > 0) {
+        const file = kindleFileInput.files[0];
+        htmlContent = await readFileAsText(file);
         cachedHtmlContent = htmlContent;
+        saveKindleFile(file.name, htmlContent);
+      }
+      
+      if (!htmlContent) {
+        showStatus(step1Status, 'No file content available', 'error');
+        return;
       }
       
       // Parse the HTML and extract highlights for the selected chapter
