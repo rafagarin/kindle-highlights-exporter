@@ -84,14 +84,16 @@ document.addEventListener('DOMContentLoaded', function() {
               option.textContent = chapter;
               chapterSelect.appendChild(option);
             });
-            chapterSelectionGroup.style.display = 'flex';
+            
+            // Restore saved chapter selection if it exists in the chapters
+            if (result.selectedChapter && chapters.includes(result.selectedChapter)) {
+              chapterSelect.value = result.selectedChapter;
+              chapterSelectionGroup.style.display = 'flex';
+            } else if (result.selectedChapter) {
+              // Saved chapter doesn't exist in this file, clear it
+              saveSelectedChapter('');
+            }
           }
-        }
-      }
-      if (result.selectedChapter) {
-        chapterSelect.value = result.selectedChapter;
-        if (chapterSelect.value) {
-          chapterSelectionGroup.style.display = 'flex';
         }
       }
       if (result.notionPageUrl) {
@@ -216,6 +218,9 @@ document.addEventListener('DOMContentLoaded', function() {
       const chapters = extractChapters(fileContent);
       chaptersList = chapters;
       
+      // Save currently selected chapter before repopulating
+      const previouslySelectedChapter = chapterSelect.value;
+      
       if (chapters.length > 0) {
         chapterSelect.innerHTML = '<option value="">-- Select a chapter --</option>';
         chapters.forEach((chapter) => {
@@ -224,9 +229,27 @@ document.addEventListener('DOMContentLoaded', function() {
           option.textContent = chapter;
           chapterSelect.appendChild(option);
         });
+        
+        // Restore previous selection if it exists in the new chapters
+        if (previouslySelectedChapter && chapters.includes(previouslySelectedChapter)) {
+          chapterSelect.value = previouslySelectedChapter;
+          saveSelectedChapter(previouslySelectedChapter);
+        } else {
+          // Clear selection if previous chapter doesn't exist in new file
+          chapterSelect.value = '';
+          saveSelectedChapter('');
+        }
+        
         chapterSelectionGroup.style.display = 'flex';
-        showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Select a chapter in Step 1.`, 'success');
+        
+        if (previouslySelectedChapter && chapters.includes(previouslySelectedChapter)) {
+          showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Previous selection preserved.`, 'success');
+        } else {
+          showStatus(step0Status, `File loaded! Found ${chapters.length} chapter(s). Select a chapter in Step 1.`, 'success');
+        }
       } else {
+        chapterSelect.value = '';
+        saveSelectedChapter('');
         showStatus(step0Status, 'File loaded, but no chapters found', 'error');
         chapterSelectionGroup.style.display = 'none';
       }
