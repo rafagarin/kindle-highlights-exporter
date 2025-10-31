@@ -12,7 +12,8 @@
   ],
   "host_permissions": [
     "https://api.notion.com/*",
-    "https://notebooklm.google.com/*"
+    "https://notebooklm.google.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "side_panel": {
     "default_path": "popup.html"

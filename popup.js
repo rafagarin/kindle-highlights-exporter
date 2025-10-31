@@ -2,8 +2,9 @@
 import { extractChapters, extractBookTitle, parseKindleHighlights, fetchKindleHtml } from './kindle.js';
 import { extractNotionDatabaseId, getDatabaseDataSourceAndTitleProperty, convertMarkdownToNotionBlocks, createPageInDatabase } from './notion.js';
 import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
+import { processHighlightsWithGemini } from './gemini.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
@@ -24,6 +25,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const step3Status = document.getElementById('step3Status');
   const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
   const step4Status = document.getElementById('step4Status');
+  const geminiApiKeyInput = document.getElementById('geminiApiKey');
   
   // Store the full HTML content and chapters list
   let cachedHtmlContent = null;
@@ -61,6 +63,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (result.notebooklmUrl) {
         notebooklmUrlInput.value = result.notebooklmUrl;
+      }
+      if (result.geminiApiKey) {
+        geminiApiKeyInput.value = result.geminiApiKey;
       }
     });
   }
@@ -157,17 +162,37 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       
       // Parse the HTML and extract highlights for the selected chapter
-      const processedContent = parseKindleHighlights(htmlContent, selectedChapter);
+      let processedContent = parseKindleHighlights(htmlContent, selectedChapter);
       
       if (!processedContent || processedContent.trim() === '') {
         showStatus(step1Status, 'No highlights found for the selected chapter', 'error');
         return;
       }
       
+      // Process with Gemini API if API key is provided
+      const geminiApiKey = geminiApiKeyInput.value.trim();
+      if (geminiApiKey) {
+        saveGeminiApiKey(geminiApiKey);
+        showStatus(step1Status, 'Processing highlights with Gemini AI...', 'info');
+        
+        try {
+          processedContent = await processHighlightsWithGemini(processedContent, geminiApiKey);
+          showStatus(step1Status, 'Highlights processed with Gemini AI!', 'success');
+        } catch (error) {
+          console.error('Error processing with Gemini:', error);
+          showStatus(step1Status, `Gemini API error: ${error.message}. Using original highlights.`, 'error');
+          // Continue with original content if Gemini fails
+        }
+      }
+      
       // Copy to clipboard
       await navigator.clipboard.writeText(processedContent);
       
-      showStatus(step1Status, 'Highlights processed and copied to clipboard!', 'success');
+      if (geminiApiKey) {
+        showStatus(step1Status, 'Highlights processed with AI and copied to clipboard!', 'success');
+      } else {
+        showStatus(step1Status, 'Highlights processed and copied to clipboard!', 'success');
+      }
       
     } catch (error) {
       console.error('Error processing Kindle highlights:', error);

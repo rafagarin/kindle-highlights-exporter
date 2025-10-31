@@ -11,7 +11,8 @@ export function loadSavedData() {
       'selectedChapter',
       'notionPageUrl',
       'notionAuthToken',
-      'notebooklmUrl'
+      'notebooklmUrl',
+      'geminiApiKey'
     ], function(result) {
       resolve(result);
     });
@@ -56,5 +57,13 @@ export function saveNotionConfig(pageUrl, authToken) {
  */
 export function saveNotebooklmUrl(url) {
   chrome.storage.local.set({ notebooklmUrl: url });
+}
+
+/**
+ * Save Gemini API key
+ * @param {string} apiKey - Gemini API key
+ */
+export function saveGeminiApiKey(apiKey) {
+  chrome.storage.local.set({ geminiApiKey: apiKey });
 }
 
