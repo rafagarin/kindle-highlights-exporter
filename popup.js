@@ -413,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Create the page with title and content
       const progressCallback = (message) => showStatus(step2Status, message, 'info');
-      await createPageInDatabase(
+      const pageId = await createPageInDatabase(
         databaseId,
         dataSourceId,
         titlePropertyName,
@@ -425,6 +425,14 @@ document.addEventListener('DOMContentLoaded', function() {
         bookNamePropertyType,
         bookTitle
       );
+      
+      // Convert page ID (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) to Notion URL format
+      // Notion page URLs use the ID without dashes: https://www.notion.so/[32-char-id]
+      const pageIdWithoutDashes = pageId.replace(/-/g, '');
+      const pageUrl = `https://www.notion.so/${pageIdWithoutDashes}`;
+      
+      // Open the newly created page in a new tab
+      chrome.tabs.create({ url: pageUrl });
       
       showStatus(step2Status, `Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');
       
