@@ -43,38 +43,34 @@
             <option value="">-- Select a chapter --</option>
           </select>
         </div>
-        <div class="input-group">
-          <button id="processKindleBtn" class="action-btn">Process Highlights</button>
-        </div>
         <div id="step1Status" class="status"></div>
       </div>
     
-    <!-- Step 3: Copy notes to Notion -->
+    <!-- Step 3: Select Actions -->
     <div class="step">
-      <h2>3. Copy notes to Notion</h2>
+      <h2>3. Select Actions</h2>
       <div class="input-group">
-        <button id="copyToNotionBtn" class="action-btn">Copy to Notion</button>
+        <label class="checkbox-label">
+          <input type="checkbox" id="actionProcessHighlights" />
+          <span>Process highlights with AI</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="actionCopyToNotion" />
+          <span>Copy notes to Notion</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="actionAddToNotebooklm" />
+          <span>Add source to NotebookLM</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="actionGenerateFlashcards" />
+          <span>Generate flashcards</span>
+        </label>
+      </div>
+      <div class="input-group">
+        <button id="performActionsBtn" class="action-btn">Perform Actions</button>
       </div>
       <div id="step2Status" class="status"></div>
-    </div>
-    
-    <!-- Step 4: Add source to NotebookLM -->
-    <div class="step">
-      <h2>4. Add source to NotebookLM</h2>
-      <p class="step-description">The extension will automatically find and open the notebook with the book name.</p>
-      <div class="input-group">
-        <button id="exportToNotebooklmBtn" class="action-btn">Export to NotebookLM</button>
-      </div>
-      <div id="step3Status" class="status"></div>
-    </div>
-    
-    <!-- Step 5: Create flashcards -->
-    <div class="step">
-      <h2>5. Create flashcards</h2>
-      <div class="input-group">
-        <button id="createFlashcardsBtn" class="action-btn">Create Flashcards</button>
-      </div>
-      <div id="step4Status" class="status"></div>
     </div>
     </div>
     

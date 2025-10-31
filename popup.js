@@ -4,7 +4,7 @@ import { extractNotionDatabaseId, getDatabaseDataSourceAndTitleProperty, convert
 import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
 import { processHighlightsWithGemini } from './gemini.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveKindleFile } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveKindleFile, saveActionState, loadActionStates } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
@@ -13,14 +13,15 @@ document.addEventListener('DOMContentLoaded', function() {
   const step0Status = document.getElementById('step0Status');
   const kindleFileInput = document.getElementById('kindleFileInput');
   const selectedFileName = document.getElementById('selectedFileName');
-  const processKindleBtn = document.getElementById('processKindleBtn');
   const step1Status = document.getElementById('step1Status');
-  const copyToNotionBtn = document.getElementById('copyToNotionBtn');
   const step2Status = document.getElementById('step2Status');
-  const exportToNotebooklmBtn = document.getElementById('exportToNotebooklmBtn');
-  const step3Status = document.getElementById('step3Status');
-  const createFlashcardsBtn = document.getElementById('createFlashcardsBtn');
-  const step4Status = document.getElementById('step4Status');
+  const performActionsBtn = document.getElementById('performActionsBtn');
+  
+  // Action checkboxes
+  const actionProcessHighlights = document.getElementById('actionProcessHighlights');
+  const actionCopyToNotion = document.getElementById('actionCopyToNotion');
+  const actionAddToNotebooklm = document.getElementById('actionAddToNotebooklm');
+  const actionGenerateFlashcards = document.getElementById('actionGenerateFlashcards');
   
   // Config tab elements
   const configGeminiApiKeyInput = document.getElementById('configGeminiApiKey');
@@ -53,11 +54,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up event listeners
     chapterSelect.addEventListener('change', handleChapterSelection);
     kindleFileInput.addEventListener('change', handleFileSelection);
-    processKindleBtn.addEventListener('click', handleProcessKindleHighlights);
-    copyToNotionBtn.addEventListener('click', handleCopyToNotion);
-    exportToNotebooklmBtn.addEventListener('click', handleExportToNotebooklm);
-    createFlashcardsBtn.addEventListener('click', handleCreateFlashcards);
+    performActionsBtn.addEventListener('click', handlePerformActions);
     saveConfigBtn.addEventListener('click', handleSaveConfig);
+    
+    // Set up checkbox listeners to save state
+    actionProcessHighlights.addEventListener('change', () => {
+      saveActionState('actionProcessHighlights', actionProcessHighlights.checked);
+    });
+    actionCopyToNotion.addEventListener('change', () => {
+      saveActionState('actionCopyToNotion', actionCopyToNotion.checked);
+    });
+    actionAddToNotebooklm.addEventListener('change', () => {
+      saveActionState('actionAddToNotebooklm', actionAddToNotebooklm.checked);
+    });
+    actionGenerateFlashcards.addEventListener('change', () => {
+      saveActionState('actionGenerateFlashcards', actionGenerateFlashcards.checked);
+    });
     
     // Load saved data
     loadSavedData().then(result => {
@@ -103,6 +115,20 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (result.notionAuthToken) {
         configNotionAuthTokenInput.value = result.notionAuthToken;
+      }
+      
+      // Load saved checkbox states
+      if (result.actionProcessHighlights !== undefined) {
+        actionProcessHighlights.checked = result.actionProcessHighlights;
+      }
+      if (result.actionCopyToNotion !== undefined) {
+        actionCopyToNotion.checked = result.actionCopyToNotion;
+      }
+      if (result.actionAddToNotebooklm !== undefined) {
+        actionAddToNotebooklm.checked = result.actionAddToNotebooklm;
+      }
+      if (result.actionGenerateFlashcards !== undefined) {
+        actionGenerateFlashcards.checked = result.actionGenerateFlashcards;
       }
     });
   }
@@ -279,90 +305,191 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
-  async function handleProcessKindleHighlights() {
+  async function processKindleHighlights(showStatusCallback) {
     // Check if a file is selected or if we have cached content
     if (!cachedHtmlContent && kindleFileInput.files.length === 0) {
-      showStatus(step1Status, 'Please select a Kindle highlights file first', 'error');
-      return;
+      showStatusCallback('Please select a Kindle highlights file first', 'error');
+      throw new Error('No file selected');
     }
     
     // Check if a chapter is selected
     const selectedChapter = chapterSelect.value;
     if (!selectedChapter) {
-      showStatus(step1Status, 'Please select a chapter first', 'error');
-      return;
+      showStatusCallback('Please select a chapter first', 'error');
+      throw new Error('No chapter selected');
     }
     
-    processKindleBtn.disabled = true;
-    showStatus(step1Status, 'Processing highlights...', 'info');
+    showStatusCallback('Processing highlights...', 'info');
     
-    try {
-      // Get HTML content from cached content or read from file input
-      let htmlContent = cachedHtmlContent;
-      if (!htmlContent && kindleFileInput.files.length > 0) {
-        const file = kindleFileInput.files[0];
-        htmlContent = await readFileAsText(file);
-        cachedHtmlContent = htmlContent;
-        saveKindleFile(file.name, htmlContent);
-      }
-      
-      if (!htmlContent) {
-        showStatus(step1Status, 'No file content available', 'error');
-        return;
-      }
-      
-      // Parse the HTML and extract highlights for the selected chapter
-      let processedContent = parseKindleHighlights(htmlContent, selectedChapter);
-      
-      if (!processedContent || processedContent.trim() === '') {
-        showStatus(step1Status, 'No highlights found for the selected chapter', 'error');
-        return;
-      }
-      
-      // Process with Gemini API if API key is provided
-      const geminiApiKey = configGeminiApiKeyInput.value.trim();
-      if (geminiApiKey) {
-        saveGeminiApiKey(geminiApiKey);
-        showStatus(step1Status, 'Processing highlights with Gemini AI...', 'info');
-        
-        try {
-          processedContent = await processHighlightsWithGemini(processedContent, geminiApiKey);
-          showStatus(step1Status, 'Highlights processed with Gemini AI!', 'success');
-        } catch (error) {
-          console.error('Error processing with Gemini:', error);
-          showStatus(step1Status, `Gemini API error: ${error.message}. Using original highlights.`, 'error');
-          // Continue with original content if Gemini fails
-        }
-      }
-      
-      // Copy to clipboard
-      await navigator.clipboard.writeText(processedContent);
-      
-      if (geminiApiKey) {
-        showStatus(step1Status, 'Highlights processed with AI and copied to clipboard!', 'success');
-      } else {
-        showStatus(step1Status, 'Highlights processed and copied to clipboard!', 'success');
-      }
-      
-    } catch (error) {
-      console.error('Error processing Kindle highlights:', error);
-      showStatus(step1Status, `Error: ${error.message}`, 'error');
-    } finally {
-      processKindleBtn.disabled = false;
+    // Get HTML content from cached content or read from file input
+    let htmlContent = cachedHtmlContent;
+    if (!htmlContent && kindleFileInput.files.length > 0) {
+      const file = kindleFileInput.files[0];
+      htmlContent = await readFileAsText(file);
+      cachedHtmlContent = htmlContent;
+      saveKindleFile(file.name, htmlContent);
     }
+    
+    if (!htmlContent) {
+      showStatusCallback('No file content available', 'error');
+      throw new Error('No file content available');
+    }
+    
+    // Parse the HTML and extract highlights for the selected chapter
+    let processedContent = parseKindleHighlights(htmlContent, selectedChapter);
+    
+    if (!processedContent || processedContent.trim() === '') {
+      showStatusCallback('No highlights found for the selected chapter', 'error');
+      throw new Error('No highlights found');
+    }
+    
+    // Process with Gemini API if API key is provided
+    const geminiApiKey = configGeminiApiKeyInput.value.trim();
+    if (geminiApiKey) {
+      saveGeminiApiKey(geminiApiKey);
+      showStatusCallback('Processing highlights with Gemini AI...', 'info');
+      
+      try {
+        processedContent = await processHighlightsWithGemini(processedContent, geminiApiKey);
+        showStatusCallback('Highlights processed with Gemini AI!', 'success');
+      } catch (error) {
+        console.error('Error processing with Gemini:', error);
+        showStatusCallback(`Gemini API error: ${error.message}. Using original highlights.`, 'error');
+        // Continue with original content if Gemini fails
+      }
+    }
+    
+    // Copy to clipboard
+    await navigator.clipboard.writeText(processedContent);
+    
+    if (geminiApiKey) {
+      showStatusCallback('Highlights processed with AI and copied to clipboard!', 'success');
+    } else {
+      showStatusCallback('Highlights processed and copied to clipboard!', 'success');
+    }
+    
+    return processedContent;
   }
   
-  async function handleCopyToNotion() {
+  async function copyToNotion(showStatusCallback) {
     const databaseUrl = configNotionDatabaseUrlInput.value.trim();
     const authToken = configNotionAuthTokenInput.value.trim();
     
     if (!databaseUrl) {
-      showStatus(step2Status, 'Please enter a Notion database URL in the Config tab', 'error');
-      return;
+      showStatusCallback('Please enter a Notion database URL in the Config tab', 'error');
+      throw new Error('Notion database URL required');
     }
     
     if (!authToken) {
-      showStatus(step2Status, 'Please enter a Notion integration token in the Config tab', 'error');
+      showStatusCallback('Please enter a Notion integration token in the Config tab', 'error');
+      throw new Error('Notion auth token required');
+    }
+    
+    // Check if a chapter is selected
+    const selectedChapter = chapterSelect.value;
+    if (!selectedChapter) {
+      showStatusCallback('Please select a chapter first in Step 2', 'error');
+      throw new Error('No chapter selected');
+    }
+    
+    saveNotionConfig(databaseUrl, authToken);
+    
+    showStatusCallback('Creating page in Notion...', 'info');
+    
+    // Get content from clipboard
+    const clipboardContent = await navigator.clipboard.readText();
+    
+    if (!clipboardContent) {
+      showStatusCallback('No content in clipboard. Process highlights first.', 'error');
+      throw new Error('No content in clipboard');
+    }
+    
+    // Extract database ID from Notion URL
+    const databaseId = extractNotionDatabaseId(databaseUrl);
+    if (!databaseId) {
+      showStatusCallback('Invalid Notion database URL format', 'error');
+      throw new Error('Invalid Notion database URL');
+    }
+    
+    // Get book title from cached HTML
+    const bookTitle = extractBookTitle(cachedHtmlContent);
+    if (!bookTitle) {
+      showStatusCallback('Could not extract book title. Please reload file in Step 1.', 'error');
+      throw new Error('Could not extract book title');
+    }
+    
+    // Create page title: "Chapter Name"
+    const pageTitle = selectedChapter;
+    
+    // Fetch database to get data source and find the title property name
+    showStatusCallback('Fetching database schema...', 'info');
+    const { dataSourceId, titlePropertyName, bookNamePropertyName, bookNamePropertyType } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
+    
+    // Convert Markdown to Notion blocks
+    const blocks = convertMarkdownToNotionBlocks(clipboardContent);
+    
+    // Create the page with title and content
+    const progressCallback = (message) => showStatusCallback(message, 'info');
+    const pageId = await createPageInDatabase(
+      databaseId,
+      dataSourceId,
+      titlePropertyName,
+      pageTitle,
+      blocks,
+      authToken,
+      progressCallback,
+      bookNamePropertyName,
+      bookNamePropertyType,
+      bookTitle
+    );
+    
+    // Convert page ID (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) to Notion URL format
+    // Notion page URLs use the ID without dashes: https://www.notion.so/[32-char-id]
+    const pageIdWithoutDashes = pageId.replace(/-/g, '');
+    const pageUrl = `https://www.notion.so/${pageIdWithoutDashes}`;
+    
+    // Open the newly created page in a new tab
+    chrome.tabs.create({ url: pageUrl });
+    
+    showStatusCallback(`Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');
+  }
+  
+  async function addSourceToNotebooklm(showStatusCallback) {
+    // Check if we have cached HTML content
+    if (!cachedHtmlContent) {
+      showStatusCallback('Please load a Kindle highlights file first in Step 1', 'error');
+      throw new Error('No file loaded');
+    }
+    
+    // Get book title from cached HTML
+    const bookTitle = extractBookTitle(cachedHtmlContent);
+    if (!bookTitle) {
+      showStatusCallback('Could not extract book title. Please reload file in Step 1.', 'error');
+      throw new Error('Could not extract book title');
+    }
+    
+    // Get the selected chapter name for renaming the source
+    const selectedChapter = chapterSelect.value;
+    const sourceName = selectedChapter || null;
+    
+    await exportToNotebooklm(bookTitle, null, showStatusCallback, sourceName);
+  }
+  
+  async function generateFlashcards(showStatusCallback) {
+    // Get the selected chapter name (source name) to select only that source
+    const selectedChapter = chapterSelect.value;
+    const sourceName = selectedChapter || null;
+    
+    await createFlashcards(showStatusCallback, sourceName);
+  }
+  
+  async function handlePerformActions() {
+    // Check if at least one action is selected
+    if (!actionProcessHighlights.checked && 
+        !actionCopyToNotion.checked && 
+        !actionAddToNotebooklm.checked && 
+        !actionGenerateFlashcards.checked) {
+      showStatus(step2Status, 'Please select at least one action', 'error');
       return;
     }
     
@@ -373,119 +500,73 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
     
-    saveNotionConfig(databaseUrl, authToken);
-    
-    copyToNotionBtn.disabled = true;
-    showStatus(step2Status, 'Creating page in Notion...', 'info');
+    performActionsBtn.disabled = true;
     
     try {
-      // Get content from clipboard
-      const clipboardContent = await navigator.clipboard.readText();
+      // Execute actions in sequence
+      const statusCallback = (message, type) => showStatus(step2Status, message, type);
       
-      if (!clipboardContent) {
-        showStatus(step2Status, 'No content in clipboard. Please run Step 2 first.', 'error');
-        return;
+      // 1. Process highlights (if selected)
+      if (actionProcessHighlights.checked) {
+        try {
+          await processKindleHighlights(statusCallback);
+        } catch (error) {
+          console.error('Error processing highlights:', error);
+          showStatus(step2Status, `Error processing highlights: ${error.message}`, 'error');
+          // Continue with other actions if this fails?
+          // For now, we'll stop if processing fails since other actions depend on it
+          if (actionCopyToNotion.checked) {
+            throw error; // Stop if Copy to Notion depends on processed highlights
+          }
+        }
       }
       
-      // Extract database ID from Notion URL
-      const databaseId = extractNotionDatabaseId(databaseUrl);
-      if (!databaseId) {
-        showStatus(step2Status, 'Invalid Notion database URL format', 'error');
-        return;
+      // 2. Copy to Notion (if selected)
+      if (actionCopyToNotion.checked) {
+        try {
+          await copyToNotion(statusCallback);
+        } catch (error) {
+          console.error('Error copying to Notion:', error);
+          showStatus(step2Status, `Error copying to Notion: ${error.message}`, 'error');
+          // Continue with other actions
+        }
       }
       
-      // Get book title from cached HTML
-      const bookTitle = extractBookTitle(cachedHtmlContent);
-      if (!bookTitle) {
-        showStatus(step2Status, 'Could not extract book title. Please reload file in Step 1.', 'error');
-        return;
+      // 3. Add source to NotebookLM (if selected)
+      if (actionAddToNotebooklm.checked) {
+        try {
+          await addSourceToNotebooklm(statusCallback);
+        } catch (error) {
+          console.error('Error adding source to NotebookLM:', error);
+          showStatus(step2Status, `Error adding source to NotebookLM: ${error.message}`, 'error');
+          // Continue with other actions
+        }
       }
       
-      // Create page title: "Chapter Name"
-      const pageTitle = selectedChapter;
+      // 4. Generate flashcards (if selected)
+      if (actionGenerateFlashcards.checked) {
+        try {
+          await generateFlashcards(statusCallback);
+        } catch (error) {
+          console.error('Error generating flashcards:', error);
+          showStatus(step2Status, `Error generating flashcards: ${error.message}`, 'error');
+        }
+      }
       
-      // Fetch database to get data source and find the title property name
-      showStatus(step2Status, 'Fetching database schema...', 'info');
-      const { dataSourceId, titlePropertyName, bookNamePropertyName, bookNamePropertyType } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
+      // Show final success message if we got here
+      const selectedActions = [];
+      if (actionProcessHighlights.checked) selectedActions.push('Process highlights');
+      if (actionCopyToNotion.checked) selectedActions.push('Copy to Notion');
+      if (actionAddToNotebooklm.checked) selectedActions.push('Add source to NotebookLM');
+      if (actionGenerateFlashcards.checked) selectedActions.push('Generate flashcards');
       
-      // Convert Markdown to Notion blocks
-      const blocks = convertMarkdownToNotionBlocks(clipboardContent);
-      
-      // Create the page with title and content
-      const progressCallback = (message) => showStatus(step2Status, message, 'info');
-      const pageId = await createPageInDatabase(
-        databaseId,
-        dataSourceId,
-        titlePropertyName,
-        pageTitle,
-        blocks,
-        authToken,
-        progressCallback,
-        bookNamePropertyName,
-        bookNamePropertyType,
-        bookTitle
-      );
-      
-      // Convert page ID (UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) to Notion URL format
-      // Notion page URLs use the ID without dashes: https://www.notion.so/[32-char-id]
-      const pageIdWithoutDashes = pageId.replace(/-/g, '');
-      const pageUrl = `https://www.notion.so/${pageIdWithoutDashes}`;
-      
-      // Open the newly created page in a new tab
-      chrome.tabs.create({ url: pageUrl });
-      
-      showStatus(step2Status, `Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');
+      showStatus(step2Status, `Completed: ${selectedActions.join(', ')}`, 'success');
       
     } catch (error) {
-      console.error('Error copying to Notion:', error);
+      console.error('Error performing actions:', error);
       showStatus(step2Status, `Error: ${error.message}`, 'error');
     } finally {
-      copyToNotionBtn.disabled = false;
-    }
-  }
-  
-  async function handleExportToNotebooklm() {
-    // Check if we have cached HTML content
-    if (!cachedHtmlContent) {
-      showStatus(step3Status, 'Please load a Kindle highlights file first in Step 1', 'error');
-      return;
-    }
-    
-    // Get book title from cached HTML
-    const bookTitle = extractBookTitle(cachedHtmlContent);
-    if (!bookTitle) {
-      showStatus(step3Status, 'Could not extract book title. Please reload file in Step 1.', 'error');
-      return;
-    }
-    
-    // Get the selected chapter name for renaming the source
-    const selectedChapter = chapterSelect.value;
-    const sourceName = selectedChapter || null;
-    
-    exportToNotebooklmBtn.disabled = true;
-    
-    try {
-      const success = await exportToNotebooklm(bookTitle, null, (message, type) => {
-        showStatus(step3Status, message, type);
-      }, sourceName);
-    } finally {
-      exportToNotebooklmBtn.disabled = false;
-    }
-  }
-  
-  async function handleCreateFlashcards() {
-    createFlashcardsBtn.disabled = true;
-    
-    try {
-      // Get the selected chapter name (source name) to select only that source
-      const selectedChapter = chapterSelect.value;
-      const sourceName = selectedChapter || null;
-      
-      await createFlashcards((message, type) => {
-        showStatus(step4Status, message, type);
-      }, sourceName);
-    } finally {
-      createFlashcardsBtn.disabled = false;
+      performActionsBtn.disabled = false;
     }
   }
 });

@@ -14,7 +14,11 @@ export function loadSavedData() {
       'notebooklmUrl',
       'geminiApiKey',
       'kindleFileContent',
-      'kindleFileName'
+      'kindleFileName',
+      'actionProcessHighlights',
+      'actionCopyToNotion',
+      'actionAddToNotebooklm',
+      'actionGenerateFlashcards'
     ], function(result) {
       resolve(result);
     });
@@ -85,6 +89,32 @@ export function saveKindleFile(fileName, fileContent) {
       // Still save the filename at least
       chrome.storage.local.set({ kindleFileName: fileName });
     }
+  });
+}
+
+/**
+ * Save action checkbox state
+ * @param {string} actionName - Action name (e.g., 'actionProcessHighlights')
+ * @param {boolean} checked - Checked state
+ */
+export function saveActionState(actionName, checked) {
+  chrome.storage.local.set({ [actionName]: checked });
+}
+
+/**
+ * Load all action checkbox states
+ * @returns {Promise<Object>} Object with action states
+ */
+export function loadActionStates() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([
+      'actionProcessHighlights',
+      'actionCopyToNotion',
+      'actionAddToNotebooklm',
+      'actionGenerateFlashcards'
+    ], function(result) {
+      resolve(result);
+    });
   });
 }
 
