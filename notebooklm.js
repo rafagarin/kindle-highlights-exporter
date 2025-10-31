@@ -5,9 +5,10 @@
  * @param {string} url - NotebookLM notebook URL
  * @param {string} content - Content to export
  * @param {Function} statusCallback - Callback for status updates
+ * @param {string} sourceName - Name to use for the source (optional)
  * @returns {Promise<boolean>} Success status
  */
-export async function exportToNotebooklm(url, content, statusCallback) {
+export async function exportToNotebooklm(url, content, statusCallback, sourceName = null) {
   if (!url) {
     statusCallback('Please enter a NotebookLM notebook URL', 'error');
     return false;
@@ -37,7 +38,8 @@ export async function exportToNotebooklm(url, content, statusCallback) {
     return new Promise((resolve) => {
       chrome.tabs.sendMessage(tab.id, { 
         action: 'exportToNotebooklm',
-        content: content
+        content: content,
+        sourceName: sourceName
       }, function(response) {
         if (chrome.runtime.lastError) {
           statusCallback('Please refresh the NotebookLM page and try again', 'error');
@@ -139,6 +141,550 @@ export async function createFlashcards(statusCallback) {
     console.error('Error creating flashcards:', error);
     statusCallback(`Error: ${error.message}`, 'error');
     return false;
+  }
+}
+
+// ============================================================================
+// DOM Automation Functions (for use in content scripts)
+// ============================================================================
+
+/**
+ * Wait for an element to appear in the DOM
+ * @param {string} selector - CSS selector for the element
+ * @param {number} timeout - Maximum time to wait in ms
+ * @param {number} pollInterval - How often to check in ms
+ * @returns {Promise<Element|null>} The element when found, or null if timeout
+ */
+export function waitForElement(selector, timeout = 5000, pollInterval = 250) {
+  return new Promise((resolve) => {
+    // Check immediately first
+    const immediateCheck = document.querySelector(selector);
+    if (immediateCheck) {
+      resolve(immediateCheck);
+      return;
+    }
+    
+    let startTime = Date.now();
+    let resolved = false;
+    
+    const pollIntervalId = setInterval(() => {
+      if (resolved) return;
+      
+      const element = document.querySelector(selector);
+      if (element) {
+        resolved = true;
+        clearInterval(pollIntervalId);
+        resolve(element);
+        return;
+      }
+      
+      // Check timeout
+      if (Date.now() - startTime >= timeout) {
+        resolved = true;
+        clearInterval(pollIntervalId);
+        // Also try MutationObserver as fallback before giving up
+        const observer = new MutationObserver(() => {
+          const element = document.querySelector(selector);
+          if (element) {
+            observer.disconnect();
+            resolve(element);
+          }
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+        
+        // Final fallback timeout
+        setTimeout(() => {
+          observer.disconnect();
+          resolve(null);
+        }, 1000);
+      }
+    }, pollInterval);
+  });
+}
+
+/**
+ * Wait for an element to disappear from the DOM
+ * @param {string} selector - CSS selector for the element
+ * @param {number} timeout - Maximum time to wait in ms
+ * @returns {Promise<void>}
+ */
+export function waitForElementToDisappear(selector, timeout = 3000) {
+  return new Promise((resolve) => {
+    // Check if element exists immediately
+    const element = document.querySelector(selector);
+    if (!element) {
+      resolve();
+      return;
+    }
+    
+    let startTime = Date.now();
+    const pollIntervalId = setInterval(() => {
+      const element = document.querySelector(selector);
+      if (!element) {
+        clearInterval(pollIntervalId);
+        resolve();
+        return;
+      }
+      
+      // Check timeout
+      if (Date.now() - startTime >= timeout) {
+        clearInterval(pollIntervalId);
+        // Even if timeout, resolve (element might still be there but we proceed)
+        resolve();
+      }
+    }, 100);
+  });
+}
+
+/**
+ * Handle NotebookLM export automation
+ * @param {string} content - Content to export
+ * @param {string} sourceName - Optional name for the source
+ * @returns {Promise<{success: boolean, error?: string, message?: string}>}
+ */
+export async function handleNotebooklmExport(content, sourceName = null) {
+  try {
+    console.log('Starting NotebookLM export automation...');
+    
+    // Step 1: Find and click the "Add source" button
+    const addSourceButton = await waitForElement('button[aria-label="Add source"], .add-source-button', 10000);
+    if (!addSourceButton) {
+      throw new Error('Could not find "Add source" button');
+    }
+    
+    console.log('Clicking Add source button...');
+    addSourceButton.click();
+    
+    // Wait for the modal/dialog to appear - use adaptive wait
+    await waitForElement('.cdk-overlay-container, mat-dialog-container', 3000, 100);
+    
+    // Step 2: Find and click the "Copied text" chip
+    // Based on the recorded output, try multiple selectors
+    let copiedTextChip = await waitForElement('div:nth-of-type(3) span.mdc-evolution-chip__text-label > span:nth-of-type(1)', 3000);
+    
+    if (!copiedTextChip) {
+      // Try alternative selectors from the recording
+      copiedTextChip = await waitForElement('#mat-mdc-chip-11', 2000);
+    }
+    
+    if (!copiedTextChip) {
+      // Fallback: search all chips for "Copied text"
+      const chips = document.querySelectorAll('mat-chip');
+      let foundChip = null;
+      for (let chip of chips) {
+        if (chip.textContent.includes('Copied text')) {
+          foundChip = chip;
+          break;
+        }
+      }
+      if (!foundChip) {
+        throw new Error('Could not find "Copied text" chip');
+      }
+      foundChip.click();
+    } else {
+      copiedTextChip.click();
+    }
+    
+    console.log('Clicked Copied text chip...');
+    
+    // Wait for the textarea to appear - check immediately and poll
+    await waitForElement('textarea', 3000, 100);
+    
+    // Step 3: Find and focus the textarea
+    // Based on the recording, use the specific ID selector
+    let textarea = await waitForElement('#mat-input-1', 5000);
+    
+    if (!textarea) {
+      // Try alternative selectors
+      textarea = await waitForElement('textarea[formcontrolname="text"], textarea.mat-mdc-input-element', 3000);
+    }
+    
+    if (!textarea) {
+      throw new Error('Could not find textarea');
+    }
+    
+    console.log('Focusing textarea...');
+    textarea.focus();
+    
+    // Clear any existing content and paste the new content
+    textarea.value = '';
+    textarea.value = content;
+    
+    // Trigger input event to ensure the form recognizes the change
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Wait a moment for the form to update - reduced wait time
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Step 4: Find and click the "Insert" button
+    // Based on the recording, use the specific selector
+    let insertButton = await waitForElement('div.cdk-overlay-container form span.mat-mdc-button-touch-target', 5000);
+    
+    if (!insertButton) {
+      // Try alternative selectors
+      insertButton = await waitForElement('button[type="submit"]', 3000);
+    }
+    
+    if (!insertButton) {
+      // Fallback: search all buttons for "Insert"
+      const buttons = document.querySelectorAll('button');
+      let foundButton = null;
+      for (let button of buttons) {
+        if (button.textContent.includes('Insert')) {
+          foundButton = button;
+          break;
+        }
+      }
+      if (!foundButton) {
+        throw new Error('Could not find "Insert" button');
+      }
+      foundButton.click();
+    } else {
+      insertButton.click();
+    }
+    
+    console.log('Clicked Insert button...');
+    
+    // Wait for the operation to complete - reduced wait, check for completion
+    // Wait for either success indicator or modal to start closing
+    await Promise.race([
+      waitForElement('[aria-label*="success"], .success-indicator', 2000, 100).catch(() => null),
+      new Promise(resolve => setTimeout(resolve, 1000))
+    ]);
+    
+    // Step 5: Close the sources modal
+    console.log('Closing sources modal...');
+    let closeButton = await waitForElement('div > div.header mat-icon', 3000);
+    
+    if (!closeButton) {
+      // Try alternative selectors from the recording
+      closeButton = await waitForElement('[aria-label="Close dialog"]', 2000);
+    }
+    
+    if (!closeButton) {
+      // Fallback: search for close icon
+      const closeIcons = document.querySelectorAll('mat-icon');
+      let foundIcon = null;
+      for (let icon of closeIcons) {
+        if (icon.textContent.includes('close') || icon.getAttribute('aria-label') === 'Close dialog') {
+          foundIcon = icon;
+          break;
+        }
+      }
+      if (foundIcon) {
+        closeButton = foundIcon;
+      }
+    }
+    
+    if (closeButton) {
+      closeButton.click();
+      console.log('Closed sources modal...');
+      // Wait briefly for modal to close, but don't block too long
+      await new Promise(resolve => setTimeout(resolve, 300));
+    } else {
+      console.log('Could not find close button, but continuing...');
+    }
+    
+    // Step 6: Rename the source if sourceName is provided
+    if (sourceName) {
+      try {
+        console.log('Renaming source to:', sourceName);
+        
+        // Wait for the sources modal to fully close first
+        await waitForElementToDisappear('.cdk-overlay-container mat-dialog-container, .cdk-overlay-container .sources-dialog', 3000);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Wait for the sources list to be visible and interactive
+        const sourcesSection = await waitForElement('section.source-panel', 5000, 100);
+        
+        if (!sourcesSection) {
+          console.warn('Could not find sources section');
+        } else {
+          // Wait a bit more for the source to fully appear in the list
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Find the most recently added source (should be the last one in the list)
+          // Look for the three dots menu button - scoped to the sources section
+          let moreButtons = sourcesSection.querySelectorAll('mat-icon.source-item-more-menu-icon, button[aria-label="More"]');
+          
+          // If not found, wait and try again with polling
+          if (moreButtons.length === 0) {
+            console.log('More buttons not found yet, waiting and polling...');
+            let attempts = 0;
+            while (moreButtons.length === 0 && attempts < 10) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+              moreButtons = sourcesSection.querySelectorAll('mat-icon.source-item-more-menu-icon, button[aria-label="More"]');
+              attempts++;
+            }
+          }
+          
+          if (moreButtons.length === 0) {
+            console.warn('Could not find any source more buttons in sources section after waiting');
+          } else {
+            // Get the last (most recent) source's more button
+            const lastMoreButton = moreButtons[moreButtons.length - 1];
+            
+            // Find the button element (might be the icon's parent)
+            let buttonToClick = lastMoreButton;
+            if (lastMoreButton.tagName === 'MAT-ICON') {
+              buttonToClick = lastMoreButton.closest('button') || lastMoreButton.parentElement;
+            }
+            
+            console.log('Clicking more menu button...');
+            buttonToClick.click();
+            
+            // Wait for the menu to appear
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Find and click "Rename source" button
+            // Try finding by aria label first
+            let renameButton = document.querySelector('button[aria-label="Rename source"]');
+            
+            if (!renameButton) {
+              // Try alternative selectors - search all buttons in the overlay
+              const buttons = document.querySelectorAll('div.cdk-overlay-container button, mat-menu button');
+              for (let btn of buttons) {
+                const text = btn.textContent.trim().toLowerCase();
+                if (text.includes('rename') || text === 'rename source') {
+                  renameButton = btn;
+                  break;
+                }
+              }
+            }
+            
+            // Also try by the structure from the recording (div.cdk-overlay-container div.ng-star-inserted > button)
+            if (!renameButton) {
+              const overlayButtons = document.querySelectorAll('div.cdk-overlay-container div.ng-star-inserted > button');
+              for (let btn of overlayButtons) {
+                if (btn.textContent.trim().toLowerCase().includes('rename')) {
+                  renameButton = btn;
+                  break;
+                }
+              }
+            }
+            
+            if (!renameButton) {
+              console.warn('Could not find "Rename source" button');
+            } else {
+              console.log('Clicking Rename source button...');
+              renameButton.click();
+              
+              // Wait for the rename dialog to appear
+              await waitForElement('.edit-source-dialog, mat-dialog-container', 3000, 100);
+              await new Promise(resolve => setTimeout(resolve, 200));
+              
+              // Find the specific form element first
+              let editForm = document.querySelector('#mat-mdc-dialog-1 > div > div > edit-source-dialog > div > form');
+              
+              if (!editForm) {
+                // Fallback: try alternative selectors for the form
+                const editDialog = document.querySelector('.edit-source-dialog, mat-dialog-container');
+                if (editDialog) {
+                  editForm = editDialog.querySelector('form');
+                }
+              }
+              
+              let nameInput = null;
+              
+              if (!editForm) {
+                console.warn('Could not find edit source form, trying global search');
+                // Fallback: search globally but prefer formcontrolname="title"
+                nameInput = document.querySelector('div.edit-source-dialog input[formcontrolname="title"], mat-dialog-container input[formcontrolname="title"]');
+              } else {
+                // Find and focus the source name input within the form
+                nameInput = editForm.querySelector('#mat-input-1, input[formcontrolname="title"], input.title-input');
+                
+                if (!nameInput) {
+                  // Try alternative selectors within the form
+                  nameInput = editForm.querySelector('input[type="text"], input.mat-mdc-input-element');
+                }
+              }
+              
+              // Final fallback if still not found
+              if (!nameInput) {
+                console.warn('Could not find input in form, trying global search as final fallback');
+                nameInput = document.querySelector('div.edit-source-dialog input, mat-dialog-container input');
+              }
+              
+              if (!nameInput) {
+                console.warn('Could not find source name input');
+              } else {
+                console.log('Focusing and updating source name input...');
+                
+                // Focus and select all text
+                nameInput.focus();
+                
+                // Select all existing text
+                nameInput.select();
+                
+                // For Angular forms, we need to properly set the value
+                // Try the native setter first (for Angular reactive forms)
+                try {
+                  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                  nativeInputValueSetter.call(nameInput, sourceName);
+                } catch (e) {
+                  // Fallback: just set the value normally
+                  nameInput.value = sourceName;
+                }
+                
+                // Trigger multiple events to ensure Angular recognizes the change
+                // First, dispatch input event with the new value
+                nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                
+                // Also trigger change event
+                nameInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                
+                // One more time to ensure the value is set (sometimes needed for Angular reactive forms)
+                nameInput.value = sourceName;
+                nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                
+                // Wait a brief moment, then verify the value was set
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // If value didn't stick, try one more approach: type it character by character
+                if (nameInput.value !== sourceName && sourceName.length > 0) {
+                  nameInput.value = '';
+                  nameInput.focus();
+                  // Simulate typing - this often works better with Angular forms
+                  for (let i = 0; i < sourceName.length; i++) {
+                    nameInput.value += sourceName[i];
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                }
+                
+                // Wait a moment for the form to update
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
+                // Find and click the Save/Submit button
+                // First try to find by the touch target span (most specific selector)
+                let saveButton = document.querySelector('span.mat-mdc-button-touch-target');
+                
+                if (saveButton) {
+                  // Find the parent button with submit-button class
+                  saveButton = saveButton.closest('button.submit-button');
+                }
+                
+                // If not found, try the specific path (dialog ID might be dynamic, so try pattern)
+                if (!saveButton) {
+                  // Try pattern with any dialog ID
+                  const dialogPattern = document.querySelector('[id^="mat-mdc-dialog-"]');
+                  if (dialogPattern) {
+                    const dialogId = dialogPattern.id;
+                    saveButton = document.querySelector(`${dialogId} > div > div > edit-source-dialog > div > form > mat-dialog-actions > button.submit-button`);
+                  }
+                }
+                
+                // Try within the form we already found
+                if (!saveButton && editForm) {
+                  // Search within the form for the submit button
+                  saveButton = editForm.querySelector('button.submit-button, button[type="submit"], mat-dialog-actions button.submit-button');
+                  
+                  // Also try to find by the touch target span within the form
+                  if (!saveButton) {
+                    const touchTarget = editForm.querySelector('span.mat-mdc-button-touch-target');
+                    if (touchTarget) {
+                      saveButton = touchTarget.closest('button.submit-button') || touchTarget.closest('button[type="submit"]');
+                    }
+                  }
+                }
+                
+                // Fallback: try global selectors with wait
+                if (!saveButton) {
+                  saveButton = await waitForElement('button.submit-button, button[type="submit"]', 2000, 100);
+                }
+                
+                // Additional fallback: try finding by text content
+                if (!saveButton) {
+                  const buttons = document.querySelectorAll('div.cdk-overlay-container button, mat-dialog-actions button');
+                  for (let btn of buttons) {
+                    const btnText = btn.textContent.trim().toLowerCase();
+                    if ((btnText.includes('save') && !btnText.includes('cancel')) || 
+                        btn.classList.contains('submit-button')) {
+                      saveButton = btn;
+                      break;
+                    }
+                  }
+                }
+                
+                if (!saveButton) {
+                  console.warn('Could not find Save button');
+                } else {
+                  console.log('Clicking Save button...');
+                  saveButton.click();
+                  
+                  // Wait for the dialog to close
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  console.log('Source renamed successfully');
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        // Don't fail the whole operation if renaming fails
+        console.warn('Error renaming source:', error);
+      }
+    }
+    
+    return { success: true, message: 'Successfully exported to NotebookLM' };
+    
+  } catch (error) {
+    console.error('NotebookLM export error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Handle creating flashcards in NotebookLM
+ * @returns {Promise<{success: boolean, error?: string, message?: string}>}
+ */
+export async function handleCreateFlashcards() {
+  try {
+    console.log('Starting create flashcards automation...');
+    
+    // Find and click the "Create flashcards" button
+    // Based on the recording, try multiple selectors
+    let createFlashcardsButton = await waitForElement('basic-create-artifact-button:nth-of-type(5) span.slim-container > span > span', 5000);
+    
+    if (!createFlashcardsButton) {
+      // Try alternative selectors from the recording
+      createFlashcardsButton = await waitForElement('basic-create-artifact-button:nth-of-type(5)', 3000);
+    }
+    
+    if (!createFlashcardsButton) {
+      // Fallback: search for buttons with "flashcard" or similar text
+      const buttons = document.querySelectorAll('basic-create-artifact-button');
+      let foundButton = null;
+      for (let button of buttons) {
+        const text = button.textContent.toLowerCase();
+        if (text.includes('flashcard') || text.includes('create') || text.includes('study')) {
+          foundButton = button;
+          break;
+        }
+      }
+      if (!foundButton) {
+        throw new Error('Could not find "Create flashcards" button');
+      }
+      foundButton.click();
+    } else {
+      createFlashcardsButton.click();
+    }
+    
+    console.log('Clicked Create flashcards button...');
+    
+    // Wait for the flashcards to be generated
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    return { success: true, message: 'Successfully created flashcards' };
+    
+  } catch (error) {
+    console.error('Create flashcards error:', error);
+    return { success: false, error: error.message };
   }
 }
 

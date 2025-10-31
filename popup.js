@@ -439,12 +439,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const url = notebooklmUrlInput.value.trim();
     saveNotebooklmUrl(url);
     
+    // Get the selected chapter name for renaming the source
+    const selectedChapter = chapterSelect.value;
+    const sourceName = selectedChapter || null;
+    
     exportToNotebooklmBtn.disabled = true;
     
     try {
       const success = await exportToNotebooklm(url, null, (message, type) => {
         showStatus(step3Status, message, type);
-      });
+      }, sourceName);
     } finally {
       exportToNotebooklmBtn.disabled = false;
     }

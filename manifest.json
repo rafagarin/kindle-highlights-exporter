@@ -29,5 +29,11 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["notebooklm.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }
