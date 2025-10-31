@@ -250,6 +250,216 @@ export async function handleNotebooklmExport(content, sourceName = null) {
   try {
     console.log('Starting NotebookLM export automation...');
     
+    // Step 0: Check for existing source with the same name and remove it if found
+    if (sourceName) {
+      try {
+        console.log(`Checking for existing source with name: "${sourceName}"`);
+        
+        // Wait for the sources list to be visible
+        const sourcesSection = await waitForElement('section.source-panel', 5000, 100);
+        
+        if (sourcesSection) {
+          // Wait a moment for sources to fully load
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Find all source items - try multiple selectors
+          let sourceItems = sourcesSection.querySelectorAll('[class*="source-item"], [class*="source"], .source, article, [role="article"]');
+          
+          // If no items found with those selectors, try finding all list items or divs that might contain sources
+          if (sourceItems.length === 0) {
+            sourceItems = sourcesSection.querySelectorAll('li, div[class*="item"], div[class*="card"]');
+          }
+          
+          let matchingSource = null;
+          
+          // Look for a source with matching name
+          for (let sourceItem of sourceItems) {
+            // Skip if this item is too small (probably not a source item)
+            const rect = sourceItem.getBoundingClientRect();
+            if (rect.height < 30 || rect.width < 100) {
+              continue;
+            }
+            
+            // Try to find the source name - could be in various places
+            const sourceText = sourceItem.textContent || '';
+            const sourceTitle = sourceItem.querySelector('.source-title, [class*="title"], .source-name, h3, h4, [class*="heading"]');
+            
+            // Check if the source name matches (exact match preferred, but also check if it's included)
+            let nameToCheck = '';
+            if (sourceTitle) {
+              nameToCheck = sourceTitle.textContent.trim();
+            } else {
+              // Try to extract just the first line or main text
+              const lines = sourceText.split('\n').filter(line => line.trim());
+              nameToCheck = lines[0] ? lines[0].trim() : sourceText.trim();
+            }
+            
+            // Exact match is preferred
+            if (nameToCheck === sourceName) {
+              matchingSource = sourceItem;
+              console.log(`Found existing source with exact name match: "${nameToCheck}"`);
+              break;
+            }
+            
+            // Also check if the name is included (for cases where there might be extra text)
+            if (nameToCheck && (nameToCheck.includes(sourceName) || sourceName.includes(nameToCheck))) {
+              // Make sure it's not a false positive by checking if it's the main text
+              const normalizedName = nameToCheck.toLowerCase().replace(/\s+/g, ' ');
+              const normalizedSourceName = sourceName.toLowerCase().replace(/\s+/g, ' ');
+              if (normalizedName.includes(normalizedSourceName) || normalizedSourceName.includes(normalizedName)) {
+                matchingSource = sourceItem;
+                console.log(`Found existing source with name containing match: "${nameToCheck}"`);
+                break;
+              }
+            }
+          }
+          
+          // Alternative: search by walking the DOM if structured search didn't work
+          if (!matchingSource) {
+            const allText = sourcesSection.textContent || '';
+            if (allText.includes(sourceName)) {
+              // Try to find the source item container that contains this exact text
+              const walker = document.createTreeWalker(
+                sourcesSection,
+                NodeFilter.SHOW_TEXT,
+                null
+              );
+              
+              let textNode;
+              while (textNode = walker.nextNode()) {
+                if (textNode.textContent && textNode.textContent.trim() === sourceName) {
+                  // Find the containing source item
+                  let parent = textNode.parentElement;
+                  while (parent && parent !== sourcesSection) {
+                    const rect = parent.getBoundingClientRect();
+                    // Check if this looks like a source item container
+                    if (rect.height > 30 && rect.width > 100) {
+                      matchingSource = parent;
+                      console.log(`Found existing source by text node walker: "${sourceName}"`);
+                      break;
+                    }
+                    parent = parent.parentElement;
+                  }
+                  if (matchingSource) break;
+                }
+              }
+            }
+          }
+          
+          if (matchingSource) {
+            console.log('Found existing source, removing it...');
+            
+            // Find the More button for this specific source
+            let moreButton = matchingSource.querySelector('mat-icon.source-item-more-menu-icon, button[aria-label="More"]');
+            
+            if (!moreButton) {
+              // Try alternative selectors within the source item
+              moreButton = matchingSource.querySelector('button[aria-label*="More"], mat-icon[aria-label*="More"]');
+            }
+            
+            if (!moreButton) {
+              // Try finding by icon or button near the source name
+              const icons = matchingSource.querySelectorAll('mat-icon, button');
+              for (let icon of icons) {
+                const ariaLabel = icon.getAttribute('aria-label') || '';
+                if (ariaLabel.toLowerCase().includes('more') || ariaLabel.toLowerCase().includes('menu')) {
+                  moreButton = icon;
+                  break;
+                }
+              }
+            }
+            
+            if (moreButton) {
+              // Find the button element (might be the icon's parent)
+              let buttonToClick = moreButton;
+              if (moreButton.tagName === 'MAT-ICON') {
+                buttonToClick = moreButton.closest('button') || moreButton.parentElement;
+              }
+              
+              console.log('Clicking more menu button for existing source...');
+              buttonToClick.click();
+              
+              // Wait for the menu to appear
+              await new Promise(resolve => setTimeout(resolve, 300));
+              
+              // Find and click "Remove source" button
+              let removeButton = document.querySelector('button[aria-label="Remove source"]');
+              
+              if (!removeButton) {
+                // Try alternative selectors - search all buttons in the overlay
+                const buttons = document.querySelectorAll('div.cdk-overlay-container button, mat-menu button');
+                for (let btn of buttons) {
+                  const text = btn.textContent.trim().toLowerCase();
+                  if ((text.includes('remove') || text.includes('delete')) && 
+                      (text.includes('source') || text === 'remove' || text === 'delete')) {
+                    removeButton = btn;
+                    break;
+                  }
+                }
+              }
+              
+              // Also try by the structure
+              if (!removeButton) {
+                const overlayButtons = document.querySelectorAll('div.cdk-overlay-container div.ng-star-inserted > button');
+                for (let btn of overlayButtons) {
+                  const text = btn.textContent.trim().toLowerCase();
+                  if (text.includes('remove') || text.includes('delete')) {
+                    removeButton = btn;
+                    break;
+                  }
+                }
+              }
+              
+              if (!removeButton) {
+                console.warn('Could not find "Remove source" button');
+              } else {
+                console.log('Clicking Remove source button...');
+                removeButton.click();
+                
+                // Wait for confirmation dialog if it appears
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Check if there's a confirmation dialog
+                // Look for confirmation buttons in any dialog that appeared
+                const buttons = document.querySelectorAll('div.cdk-overlay-container button, mat-dialog-container button');
+                let confirmButton = null;
+                for (let btn of buttons) {
+                  const text = btn.textContent.trim().toLowerCase();
+                  const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                  if (((text.includes('remove') || text.includes('delete')) || 
+                       (ariaLabel.includes('remove') || ariaLabel.includes('delete'))) && 
+                      !text.includes('cancel') && 
+                      !ariaLabel.includes('cancel')) {
+                    confirmButton = btn;
+                    break;
+                  }
+                }
+                
+                if (confirmButton) {
+                  console.log('Clicking confirmation button...');
+                  confirmButton.click();
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                // Wait for the source to be removed
+                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log('Existing source removed successfully');
+              }
+            } else {
+              console.warn('Could not find More button for existing source');
+            }
+          } else {
+            console.log(`No existing source found with name: "${sourceName}"`);
+          }
+        } else {
+          console.log('Sources section not found, proceeding with new source');
+        }
+      } catch (error) {
+        // Don't fail the whole operation if checking/removing existing source fails
+        console.warn('Error checking/removing existing source:', error);
+      }
+    }
+    
     // Step 1: Find and click the "Add source" button
     const addSourceButton = await waitForElement('button[aria-label="Add source"], .add-source-button', 10000);
     if (!addSourceButton) {
