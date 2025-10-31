@@ -1,15 +1,25 @@
-# Chrome Extension Boilerplate
+# Learning Workflow Extension
 
-A generic, empty Chrome extension boilerplate ready for development.
+A Chrome extension that automates the learning workflow from Kindle highlights to NotebookLM flashcards. This extension streamlines the process of extracting highlights from Kindle books, organizing them in Notion, and creating flashcards in NotebookLM for efficient studying.
+
 
 ## Files Structure
 
-- `manifest.json` - Extension configuration and permissions
-- `popup.html` - Extension popup interface
-- `popup.js` - Popup functionality
-- `popup.css` - Popup styling
-- `background.js` - Background service worker
-- `content.js` - Content script for web pages
+### Core Files
+- `manifest.json` - Extension configuration, permissions, and metadata
+- `popup.html` - Side panel UI interface
+- `popup.js` - Main extension logic and workflow orchestration
+- `popup.css` - Side panel styling
+- `background.js` - Background service worker for extension lifecycle
+- `content.js` - Content script for automating NotebookLM interactions
+
+### Module Files
+- `kindle.js` - Kindle HTML parsing, chapter extraction, and highlight processing
+- `notion.js` - Notion API integration for database/page creation
+- `notebooklm.js` - NotebookLM automation and flashcard creation
+- `gemini.js` - Google Gemini API integration for AI-powered highlight processing
+- `storage.js` - Chrome storage operations for saving user data
+- `utils.js` - Utility functions for UI status updates
 
 ## Setup Instructions
 
@@ -18,32 +28,19 @@ A generic, empty Chrome extension boilerplate ready for development.
    - Enable "Developer mode" in the top right
    - Click "Load unpacked" and select this folder
 
-2. **Test the extension:**
-   - Click the extension icon in the toolbar
-   - The popup should open with a "Click Me" button
-   - Click the button to see a notification on the current page
+2. **Configure API Keys (Optional):**
+   - **Gemini API Key** (Step 1): Optional - for AI-powered highlight processing
+     - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+   - **Notion Integration Token** (Step 2): Required for Notion integration
+     - Create an integration at [Notion Integrations](https://www.notion.so/my-integrations)
+     - Grant it access to your workspace/database
 
-## Features Included
+3. **Use the extension:**
+   - Click the extension icon in the toolbar to open the side panel
+   - Follow the steps sequentially:
+     1. Load your Kindle highlights HTML file URL and select a chapter
+     2. Process highlights (optionally with Gemini AI)
+     3. Copy to Notion (requires database URL and integration token)
+     4. Export to NotebookLM (opens notebook and adds content)
+     5. Create flashcards (automates flashcard creation in NotebookLM)
 
-- Basic popup interface with HTML, CSS, and JavaScript
-- Background service worker for extension lifecycle management
-- Content script that runs on all web pages
-- Message passing between popup, background, and content scripts
-- Chrome storage API integration
-- Tab management functionality
-
-## Development
-
-- Modify `popup.html` and `popup.css` to customize the popup interface
-- Add functionality in `popup.js` for popup interactions
-- Use `background.js` for extension-wide logic and API calls
-- Use `content.js` to interact with web page content
-- Update `manifest.json` to add permissions or change configuration
-
-## Permissions
-
-Currently includes:
-- `activeTab` - Access to the currently active tab
-- `storage` - Access to Chrome storage API
-
-Add more permissions in `manifest.json` as needed for your extension's functionality.
