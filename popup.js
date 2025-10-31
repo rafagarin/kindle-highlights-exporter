@@ -458,9 +458,13 @@ document.addEventListener('DOMContentLoaded', function() {
     createFlashcardsBtn.disabled = true;
     
     try {
+      // Get the selected chapter name (source name) to select only that source
+      const selectedChapter = chapterSelect.value;
+      const sourceName = selectedChapter || null;
+      
       await createFlashcards((message, type) => {
         showStatus(step4Status, message, type);
-      });
+      }, sourceName);
     } finally {
       createFlashcardsBtn.disabled = false;
     }

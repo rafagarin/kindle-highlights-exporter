@@ -63,7 +63,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   if (request.action === 'createFlashcards') {
     loadNotebooklmModule()
       .then(module => {
-        return module.handleCreateFlashcards();
+        return module.handleCreateFlashcards(request.sourceName);
       })
       .then(result => {
         safeSendResponse(result);
