@@ -308,9 +308,159 @@ export async function openNotebookByName(bookName) {
     }
     
     if (!targetButton) {
-      throw new Error(`Could not find notebook with name: "${bookName}"`);
+      // Notebook doesn't exist, create a new one
+      console.log(`Notebook "${bookName}" not found, creating new notebook...`);
+      
+      // Find the create notebook button (mat-card in the project-buttons-flow)
+      let createButton = document.querySelector('div.project-buttons-flow > mat-card');
+      
+      if (!createButton) {
+        // Try alternative selectors
+        createButton = document.querySelector('mat-card[role="button"], .project-buttons-flow mat-card, .all-projects-container mat-card');
+      }
+      
+      if (!createButton) {
+        throw new Error('Could not find create notebook button');
+      }
+      
+      console.log('Clicking create notebook button...');
+      createButton.click();
+      
+      // Wait for the notebook to be created and the "Add source" modal to appear
+      await waitForElement('#mat-mdc-dialog-0, upload-dialog, mat-dialog-container', 10000, 200);
+      
+      // Wait a moment for the modal to fully load
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Close the "Add source" modal that opens automatically
+      console.log('Closing Add source modal...');
+      let closeModalButton = document.querySelector('#mat-mdc-dialog-0 > div > div > upload-dialog > div > div.header > span > button');
+      
+      if (!closeModalButton) {
+        // Try alternative selectors for the close button
+        const uploadDialog = document.querySelector('upload-dialog');
+        if (uploadDialog) {
+          closeModalButton = uploadDialog.querySelector('div.header button, div.header span button, button[aria-label*="Close"], button[aria-label*="close"]');
+        }
+      }
+      
+      if (!closeModalButton) {
+        // Try finding by the dialog container
+        const dialogContainer = document.querySelector('#mat-mdc-dialog-0, mat-dialog-container');
+        if (dialogContainer) {
+          closeModalButton = dialogContainer.querySelector('div.header button, div.header span button, button[aria-label*="Close"]');
+        }
+      }
+      
+      if (!closeModalButton) {
+        // Fallback: try to find any close button in the dialog
+        const buttons = document.querySelectorAll('#mat-mdc-dialog-0 button, upload-dialog button');
+        for (let btn of buttons) {
+          const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+          if (ariaLabel.includes('close') || ariaLabel === 'close dialog') {
+            closeModalButton = btn;
+            break;
+          }
+        }
+      }
+      
+      if (closeModalButton) {
+        closeModalButton.click();
+        console.log('Closed Add source modal');
+        // Wait for modal to close
+        await waitForElementToDisappear('#mat-mdc-dialog-0, upload-dialog', 3000);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        console.warn('Could not find close button, continuing anyway...');
+        // Wait a bit anyway
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Now find the notebook name input field in the header
+      console.log('Finding notebook name input...');
+      let nameInput = document.querySelector('body > labs-tailwind-root > div > notebook > notebook-header > div > page-header > div > div.title-container.ng-star-inserted > div > editable-project-title > div > input');
+      
+      if (!nameInput) {
+        // Try alternative selectors
+        nameInput = document.querySelector('editable-project-title input, .title-container input, notebook-header input[type="text"]');
+      }
+      
+      if (!nameInput) {
+        // Try more generic approach
+        const editableTitle = document.querySelector('editable-project-title');
+        if (editableTitle) {
+          nameInput = editableTitle.querySelector('input, div input');
+        }
+      }
+      
+      if (!nameInput) {
+        // Final fallback: search for input in the notebook header
+        const notebookHeader = document.querySelector('notebook-header, page-header');
+        if (notebookHeader) {
+          const inputs = notebookHeader.querySelectorAll('input');
+          for (let input of inputs) {
+            if (input.type === 'text' || !input.type) {
+              nameInput = input;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!nameInput) {
+        throw new Error('Could not find notebook name input field');
+      }
+      
+      console.log('Entering notebook name...');
+      nameInput.focus();
+      nameInput.select();
+      
+      // Set the book name as the notebook name
+      // Use native setter for Angular forms
+      try {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        nativeInputValueSetter.call(nameInput, bookName);
+      } catch (e) {
+        nameInput.value = bookName;
+      }
+      
+      // Trigger input events for Angular forms
+      nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      nameInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+      
+      // Also try setting value again and dispatching
+      nameInput.value = bookName;
+      nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      
+      // Wait a moment for the form to update
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // If value didn't stick, try character by character
+      if (nameInput.value !== bookName && bookName.length > 0) {
+        nameInput.value = '';
+        nameInput.focus();
+        for (let i = 0; i < bookName.length; i++) {
+          nameInput.value += bookName[i];
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+      
+      // Trigger blur to save (some editable titles save on blur)
+      nameInput.blur();
+      
+      // Wait a moment for the name to be saved
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log('Notebook name set successfully');
+      
+      // Wait for notebook to be ready (ensure the page is fully loaded)
+      await waitForElement('section.source-panel, button[aria-label="Add source"], .add-source-button', 10000, 200);
+      
+      console.log('Notebook created and opened successfully');
+      return;
     }
     
+    // Notebook exists, open it
     // Find the clickable element within the project button (the mat-card or project-button-box)
     let clickableElement = targetButton.querySelector('mat-card, .project-button-card, .project-button-box, [role="button"]');
     
