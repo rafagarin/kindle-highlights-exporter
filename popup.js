@@ -400,12 +400,12 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
       
-      // Create page title: "Book Name - Chapter Name"
-      const pageTitle = `${bookTitle} - ${selectedChapter}`;
+      // Create page title: "Chapter Name"
+      const pageTitle = selectedChapter;
       
       // Fetch database to get data source and find the title property name
       showStatus(step2Status, 'Fetching database schema...', 'info');
-      const { dataSourceId, titlePropertyName } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
+      const { dataSourceId, titlePropertyName, bookNamePropertyName, bookNamePropertyType } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
       
       // Convert Markdown to Notion blocks
       const blocks = convertMarkdownToNotionBlocks(clipboardContent);
@@ -419,7 +419,10 @@ document.addEventListener('DOMContentLoaded', function() {
         pageTitle,
         blocks,
         authToken,
-        progressCallback
+        progressCallback,
+        bookNamePropertyName,
+        bookNamePropertyType,
+        bookTitle
       );
       
       showStatus(step2Status, `Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');

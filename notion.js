@@ -41,7 +41,7 @@ export function extractNotionPageId(url) {
  * Get database data source ID and title property name
  * @param {string} databaseId - Database ID
  * @param {string} authToken - Notion API auth token
- * @returns {Promise<{dataSourceId: string|null, titlePropertyName: string}>}
+ * @returns {Promise<{dataSourceId: string|null, titlePropertyName: string, bookNamePropertyName: string|null, bookNamePropertyType: string|null}>}
  */
 export async function getDatabaseDataSourceAndTitleProperty(databaseId, authToken) {
   try {
@@ -108,7 +108,19 @@ export async function getDatabaseDataSourceAndTitleProperty(databaseId, authToke
       }
     }
     
-    return { dataSourceId, titlePropertyName };
+    // Find the "Book Name" property if it exists
+    let bookNamePropertyName = null;
+    let bookNamePropertyType = null;
+    const bookNameVariants = ['Book Name', 'Book', 'Book Title', 'BookName'];
+    for (const [propertyName, property] of Object.entries(properties)) {
+      if (bookNameVariants.includes(propertyName)) {
+        bookNamePropertyName = propertyName;
+        bookNamePropertyType = property.type;
+        break;
+      }
+    }
+    
+    return { dataSourceId, titlePropertyName, bookNamePropertyName, bookNamePropertyType };
   } catch (error) {
     console.error('Error fetching database/data source:', error);
     throw error;
@@ -178,6 +190,9 @@ export function convertMarkdownToNotionBlocks(markdown) {
  * @param {Array} blocks - Content blocks to add
  * @param {string} authToken - Notion API auth token
  * @param {Function} progressCallback - Optional callback for progress updates
+ * @param {string|null} bookNamePropertyName - Name of the "Book Name" property (optional)
+ * @param {string|null} bookNamePropertyType - Type of the "Book Name" property (optional)
+ * @param {string|null} bookName - Book name value to set (optional)
  * @returns {Promise<string>} Created page ID
  */
 export async function createPageInDatabase(
@@ -187,7 +202,10 @@ export async function createPageInDatabase(
   pageTitle,
   blocks,
   authToken,
-  progressCallback = null
+  progressCallback = null,
+  bookNamePropertyName = null,
+  bookNamePropertyType = null,
+  bookName = null
 ) {
   // Create the page with title and initial content
   const pageData = {
@@ -208,6 +226,36 @@ export async function createPageInDatabase(
       }
     }
   };
+  
+  // Add "Book Name" property if it exists and bookName is provided
+  if (bookNamePropertyName && bookName && bookNamePropertyType) {
+    // Handle different property types for "Book Name" based on the Notion API
+    // Reference: https://developers.notion.com/docs/working-with-databases
+    if (bookNamePropertyType === 'rich_text') {
+      pageData.properties[bookNamePropertyName] = {
+        type: "rich_text",
+        rich_text: [{
+          type: "text",
+          text: { content: bookName }
+        }]
+      };
+    } else if (bookNamePropertyType === 'title') {
+      pageData.properties[bookNamePropertyName] = {
+        type: "title",
+        title: [{
+          type: "text",
+          text: { content: bookName }
+        }]
+      };
+    } else if (bookNamePropertyType === 'select') {
+      // If it's a select property, we'd need to match an option
+      // For now, we'll skip it and log a warning
+      console.warn(`"Book Name" property is of type "select" and cannot be set automatically`);
+    } else {
+      // For other property types, log a warning
+      console.warn(`"Book Name" property type "${bookNamePropertyType}" is not supported yet`);
+    }
+  }
   
   // Add children (content blocks) if we have any
   if (blocks.length > 0) {
