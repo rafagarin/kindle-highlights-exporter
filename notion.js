@@ -9,9 +9,15 @@ const NOTION_API_BASE = 'https://api.notion.com/v1';
  * @returns {string|null} Formatted database ID or null
  */
 export function extractNotionDatabaseId(url) {
+  // Remove query parameters (everything after ?) to ignore view IDs
+  // URL formats:
+  // https://www.notion.so/29c9f256cc1080b1a0c4f40ca22e0a41
+  // https://www.notion.so/29c9f256cc1080b1a0c4f40ca22e0a41?v=29c9f256cc1080179839000cca879d10
+  const urlWithoutQuery = url.split('?')[0];
+  
   // Extract database ID from Notion URL
   // Format: https://www.notion.so/workspace/database-title-32charid or similar
-  const match = url.match(/([a-f0-9]{32})$/);
+  const match = urlWithoutQuery.match(/([a-f0-9]{32})$/);
   if (match) {
     const id = match[1];
     // Format as 8-4-4-4-12
