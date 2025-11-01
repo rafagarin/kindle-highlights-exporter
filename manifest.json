@@ -32,7 +32,13 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["notebooklm.js"],
+      "resources": [
+        "notebooklm.js",
+        "notebooklm_utils.js",
+        "notebooklm_notebooks.js",
+        "notebooklm_sources.js",
+        "notebooklm_flashcards.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
