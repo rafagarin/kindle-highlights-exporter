@@ -3,8 +3,9 @@ import { extractChapters, extractBookTitle, parseKindleHighlights, fetchKindleHt
 import { extractNotionDatabaseId, getDatabaseDataSourceAndTitleProperty, convertMarkdownToNotionBlocks, createPageInDatabase } from './notion.js';
 import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
 import { processHighlightsWithGemini } from './gemini.js';
+import { sendToGeminiChat } from './gemini_chat.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveKindleFile, saveActionState, loadActionStates } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveGeminiChatUrl, saveKindleFile, saveActionState, loadActionStates } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
@@ -22,11 +23,13 @@ document.addEventListener('DOMContentLoaded', function() {
   const actionCopyToNotion = document.getElementById('actionCopyToNotion');
   const actionAddToNotebooklm = document.getElementById('actionAddToNotebooklm');
   const actionGenerateFlashcards = document.getElementById('actionGenerateFlashcards');
+  const actionCreateGeminiQuiz = document.getElementById('actionCreateGeminiQuiz');
   
   // Config tab elements
   const configGeminiApiKeyInput = document.getElementById('configGeminiApiKey');
   const configNotionAuthTokenInput = document.getElementById('configNotionAuthToken');
   const configNotionDatabaseUrlInput = document.getElementById('configNotionDatabaseUrl');
+  const configGeminiChatUrlInput = document.getElementById('configGeminiChatUrl');
   const saveConfigBtn = document.getElementById('saveConfigBtn');
   const configStatus = document.getElementById('configStatus');
   
@@ -69,6 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     actionGenerateFlashcards.addEventListener('change', () => {
       saveActionState('actionGenerateFlashcards', actionGenerateFlashcards.checked);
+    });
+    actionCreateGeminiQuiz.addEventListener('change', () => {
+      saveActionState('actionCreateGeminiQuiz', actionCreateGeminiQuiz.checked);
     });
     
     // Load saved data
@@ -113,6 +119,9 @@ document.addEventListener('DOMContentLoaded', function() {
       if (result.geminiApiKey) {
         configGeminiApiKeyInput.value = result.geminiApiKey;
       }
+      if (result.geminiChatUrl) {
+        configGeminiChatUrlInput.value = result.geminiChatUrl;
+      }
       if (result.notionAuthToken) {
         configNotionAuthTokenInput.value = result.notionAuthToken;
       }
@@ -129,6 +138,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       if (result.actionGenerateFlashcards !== undefined) {
         actionGenerateFlashcards.checked = result.actionGenerateFlashcards;
+      }
+      if (result.actionCreateGeminiQuiz !== undefined) {
+        actionCreateGeminiQuiz.checked = result.actionCreateGeminiQuiz;
       }
     });
   }
@@ -155,6 +167,7 @@ document.addEventListener('DOMContentLoaded', function() {
   
   async function handleSaveConfig() {
     const geminiApiKey = configGeminiApiKeyInput.value.trim();
+    const geminiChatUrl = configGeminiChatUrlInput.value.trim();
     const notionAuthToken = configNotionAuthTokenInput.value.trim();
     const notionDatabaseUrl = configNotionDatabaseUrlInput.value.trim();
     
@@ -166,6 +179,12 @@ document.addEventListener('DOMContentLoaded', function() {
         saveGeminiApiKey(geminiApiKey);
       } else {
         chrome.storage.local.remove('geminiApiKey');
+      }
+      
+      if (geminiChatUrl) {
+        saveGeminiChatUrl(geminiChatUrl);
+      } else {
+        chrome.storage.local.remove('geminiChatUrl');
       }
       
       if (notionAuthToken && notionDatabaseUrl) {
@@ -490,12 +509,35 @@ document.addEventListener('DOMContentLoaded', function() {
     await createFlashcards(showStatusCallback, sourceName, chapterName);
   }
   
+  async function createGeminiQuiz(showStatusCallback) {
+    // Get the Gemini chat URL from config
+    const geminiChatUrl = configGeminiChatUrlInput.value.trim();
+    
+    if (!geminiChatUrl) {
+      showStatusCallback('Please enter a Gemini Chat/Gem URL in the Config tab', 'error');
+      throw new Error('Gemini Chat URL required');
+    }
+    
+    // Get content from clipboard (should be from Step 2)
+    const clipboardContent = await navigator.clipboard.readText();
+    
+    if (!clipboardContent) {
+      showStatusCallback('No content in clipboard. Please run Step 2 first.', 'error');
+      throw new Error('No content in clipboard');
+    }
+    
+    saveGeminiChatUrl(geminiChatUrl);
+    
+    await sendToGeminiChat(geminiChatUrl, clipboardContent, showStatusCallback);
+  }
+  
   async function handlePerformActions() {
     // Check if at least one action is selected
     if (!actionProcessHighlights.checked && 
         !actionCopyToNotion.checked && 
         !actionAddToNotebooklm.checked && 
-        !actionGenerateFlashcards.checked) {
+        !actionGenerateFlashcards.checked &&
+        !actionCreateGeminiQuiz.checked) {
       showStatus(step2Status, 'Please select at least one action', 'error');
       return;
     }
@@ -539,7 +581,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       
-      // 3. Add source to NotebookLM (if selected)
+      // 3. Create Gemini quiz (if selected)
+      if (actionCreateGeminiQuiz.checked) {
+        try {
+          await createGeminiQuiz(statusCallback);
+        } catch (error) {
+          console.error('Error creating Gemini quiz:', error);
+          showStatus(step2Status, `Error creating Gemini quiz: ${error.message}`, 'error');
+        }
+      }
+      
+      // 4. Add source to NotebookLM (if selected)
       if (actionAddToNotebooklm.checked) {
         try {
           await addSourceToNotebooklm(statusCallback);
@@ -550,7 +602,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       
-      // 4. Generate flashcards (if selected)
+      // 5. Generate flashcards (if selected)
       if (actionGenerateFlashcards.checked) {
         try {
           await generateFlashcards(statusCallback);
@@ -564,6 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const selectedActions = [];
       if (actionProcessHighlights.checked) selectedActions.push('Process highlights');
       if (actionCopyToNotion.checked) selectedActions.push('Copy to Notion');
+      if (actionCreateGeminiQuiz.checked) selectedActions.push('Create Gemini quiz');
       if (actionAddToNotebooklm.checked) selectedActions.push('Add source to NotebookLM');
       if (actionGenerateFlashcards.checked) selectedActions.push('Generate flashcards');
       

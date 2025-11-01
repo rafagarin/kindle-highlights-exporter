@@ -13,7 +13,8 @@
   "host_permissions": [
     "https://api.notion.com/*",
     "https://notebooklm.google.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://gemini.google.com/*"
   ],
   "side_panel": {
     "default_path": "popup.html"
@@ -37,7 +38,8 @@
         "notebooklm_utils.js",
         "notebooklm_notebooks.js",
         "notebooklm_sources.js",
-        "notebooklm_flashcards.js"
+        "notebooklm_flashcards.js",
+        "gemini_chat.js"
       ],
       "matches": ["<all_urls>"]
     }

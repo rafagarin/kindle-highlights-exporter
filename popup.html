@@ -59,6 +59,10 @@
           <span>Copy notes to Notion</span>
         </label>
         <label class="checkbox-label">
+          <input type="checkbox" id="actionCreateGeminiQuiz" />
+          <span>Create Gemini quiz</span>
+        </label>
+        <label class="checkbox-label">
           <input type="checkbox" id="actionAddToNotebooklm" />
           <span>Add source to NotebookLM</span>
         </label>
@@ -107,6 +111,16 @@
             class="url-input"
           />
           <p class="help-text">Required for Step 3. The database must have a "Book Name" property, and the integration must have access to the database.</p>
+        </div>
+        <div class="input-group">
+          <label for="configGeminiChatUrl">Gemini Chat/Gem URL</label>
+          <input 
+            type="url" 
+            id="configGeminiChatUrl" 
+            placeholder="Paste Gemini gem/chat URL here (e.g., https://gemini.google.com/gem/...)..."
+            class="url-input"
+          />
+          <p class="help-text">Required for "Create Gemini quiz" action. The URL should point to your Gemini gem/chat.</p>
         </div>
         <div id="configStatus" class="status"></div>
         <button id="saveConfigBtn" class="action-btn">Save Configuration</button>

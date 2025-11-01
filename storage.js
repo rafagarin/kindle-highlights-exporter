@@ -13,12 +13,14 @@ export function loadSavedData() {
       'notionAuthToken',
       'notebooklmUrl',
       'geminiApiKey',
+      'geminiChatUrl',
       'kindleFileContent',
       'kindleFileName',
       'actionProcessHighlights',
       'actionCopyToNotion',
       'actionAddToNotebooklm',
-      'actionGenerateFlashcards'
+      'actionGenerateFlashcards',
+      'actionCreateGeminiQuiz'
     ], function(result) {
       resolve(result);
     });
@@ -71,6 +73,14 @@ export function saveNotebooklmUrl(url) {
  */
 export function saveGeminiApiKey(apiKey) {
   chrome.storage.local.set({ geminiApiKey: apiKey });
+}
+
+/**
+ * Save Gemini Chat/Gem URL
+ * @param {string} url - Gemini chat/gem URL
+ */
+export function saveGeminiChatUrl(url) {
+  chrome.storage.local.set({ geminiChatUrl: url });
 }
 
 /**

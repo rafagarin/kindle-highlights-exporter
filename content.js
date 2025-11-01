@@ -108,6 +108,28 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // Keep message channel open for async response
   }
   
+  if (request.action === 'sendToGeminiChat') {
+    // Load gemini_chat.js module dynamically
+    (async () => {
+      try {
+        const moduleUrl = chrome.runtime.getURL('gemini_chat.js');
+        const geminiChatModule = await import(moduleUrl);
+        return geminiChatModule.handleSendToGeminiChat(request.content);
+      } catch (error) {
+        console.error('Failed to load gemini_chat module:', error);
+        throw error;
+      }
+    })()
+      .then(result => {
+        safeSendResponse(result);
+      })
+      .catch(error => {
+        console.error('Error in sendToGeminiChat:', error);
+        safeSendResponse({success: false, error: error.message});
+      });
+    return true; // Keep message channel open for async response
+  }
+  
   safeSendResponse({status: 'ready'});
   return false;
 });
