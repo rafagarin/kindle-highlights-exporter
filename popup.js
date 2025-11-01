@@ -350,7 +350,12 @@ document.addEventListener('DOMContentLoaded', function() {
       showStatusCallback('Processing highlights with Gemini AI...', 'info');
       
       try {
-        processedContent = await processHighlightsWithGemini(processedContent, geminiApiKey);
+        // Progress callback to show which section is being processed
+        const progressCallback = (sectionName, current, total) => {
+          showStatusCallback(`Processing section "${sectionName}" (${current}/${total})...`, 'info');
+        };
+        
+        processedContent = await processHighlightsWithGemini(processedContent, geminiApiKey, progressCallback);
         showStatusCallback('Highlights processed with Gemini AI!', 'success');
       } catch (error) {
         console.error('Error processing with Gemini:', error);
