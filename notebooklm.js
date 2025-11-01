@@ -4,10 +4,10 @@
 
 import { openNotebookByName, waitForTabReady } from './notebooklm_notebooks.js';
 import { handleNotebooklmExport } from './notebooklm_sources.js';
-import { handleCreateFlashcards } from './notebooklm_flashcards.js';
+import { handleCreateFlashcards, renameFlashcard } from './notebooklm_flashcards.js';
 
 // Re-export functions for use in content scripts
-export { openNotebookByName, handleNotebooklmExport, handleCreateFlashcards };
+export { openNotebookByName, handleNotebooklmExport, handleCreateFlashcards, renameFlashcard };
 
 /**
  * Export content to NotebookLM
@@ -75,9 +75,10 @@ export async function exportToNotebooklm(bookName, content, statusCallback, sour
  * Create flashcards in NotebookLM
  * @param {Function} statusCallback - Callback for status updates
  * @param {string} sourceName - Optional name of the source to select for flashcards
+ * @param {string} chapterName - Optional name to rename the flashcard after creation
  * @returns {Promise<boolean>} Success status
  */
-export async function createFlashcards(statusCallback, sourceName = null) {
+export async function createFlashcards(statusCallback, sourceName = null, chapterName = null) {
   try {
     // Get the current active tab (should be the NotebookLM page)
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -90,17 +91,30 @@ export async function createFlashcards(statusCallback, sourceName = null) {
     
     statusCallback('Creating flashcards...', 'info');
     
+    // Set up listener for status updates during flashcard generation
+    const statusUpdateListener = (message, sender, sendResponse) => {
+      if (message.action === 'flashcardStatusUpdate') {
+        statusCallback(message.message, 'info');
+      }
+    };
+    chrome.runtime.onMessage.addListener(statusUpdateListener);
+    
     // Send message to content script to create flashcards
     return new Promise((resolve) => {
       chrome.tabs.sendMessage(currentTab.id, { 
         action: 'createFlashcards',
-        sourceName: sourceName
+        sourceName: sourceName,
+        chapterName: chapterName
       }, function(response) {
+        // Remove the status update listener when done
+        chrome.runtime.onMessage.removeListener(statusUpdateListener);
+        
         if (chrome.runtime.lastError) {
           statusCallback('Please refresh the NotebookLM page and try again', 'error');
           resolve(false);
         } else if (response && response.success) {
-          statusCallback('Successfully created flashcards!', 'success');
+          const message = response.message || 'Successfully created flashcards!';
+          statusCallback(message, 'success');
           resolve(true);
         } else {
           statusCallback(response?.error || 'Failed to create flashcards', 'error');

@@ -482,10 +482,12 @@ document.addEventListener('DOMContentLoaded', function() {
   
   async function generateFlashcards(showStatusCallback) {
     // Get the selected chapter name (source name) to select only that source
+    // Also use it as the flashcard name
     const selectedChapter = chapterSelect.value;
     const sourceName = selectedChapter || null;
+    const chapterName = selectedChapter || null; // Use chapter name for renaming the flashcard
     
-    await createFlashcards(showStatusCallback, sourceName);
+    await createFlashcards(showStatusCallback, sourceName, chapterName);
   }
   
   async function handlePerformActions() {

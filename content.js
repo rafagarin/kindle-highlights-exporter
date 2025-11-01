@@ -83,9 +83,20 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   }
   
   if (request.action === 'createFlashcards') {
+    // Create a status update callback that sends messages back to the extension
+    const statusUpdateCallback = (message) => {
+      // Send status update message to background/popup
+      chrome.runtime.sendMessage({
+        action: 'flashcardStatusUpdate',
+        message: message
+      }).catch(() => {
+        // Ignore errors if popup is not open
+      });
+    };
+    
     loadNotebooklmModule()
       .then(module => {
-        return module.handleCreateFlashcards(request.sourceName);
+        return module.handleCreateFlashcards(request.sourceName, request.chapterName, statusUpdateCallback);
       })
       .then(result => {
         safeSendResponse(result);
