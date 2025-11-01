@@ -114,7 +114,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
       try {
         const moduleUrl = chrome.runtime.getURL('gemini_chat.js');
         const geminiChatModule = await import(moduleUrl);
-        return geminiChatModule.handleSendToGeminiChat(request.content);
+        return geminiChatModule.handleSendToGeminiChat(request.content, request.bookName, request.chapterName);
       } catch (error) {
         console.error('Failed to load gemini_chat module:', error);
         throw error;

@@ -510,6 +510,26 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   async function createGeminiQuiz(showStatusCallback) {
+    // Check if we have cached HTML content
+    if (!cachedHtmlContent) {
+      showStatusCallback('Please load a Kindle highlights file first in Step 1', 'error');
+      throw new Error('No file loaded');
+    }
+    
+    // Get book title from cached HTML
+    const bookTitle = extractBookTitle(cachedHtmlContent);
+    if (!bookTitle) {
+      showStatusCallback('Could not extract book title. Please reload file in Step 1.', 'error');
+      throw new Error('Could not extract book title');
+    }
+    
+    // Get the selected chapter name
+    const selectedChapter = chapterSelect.value;
+    if (!selectedChapter) {
+      showStatusCallback('Please select a chapter first in Step 2', 'error');
+      throw new Error('No chapter selected');
+    }
+    
     // Get the Gemini chat URL from config
     const geminiChatUrl = configGeminiChatUrlInput.value.trim();
     
@@ -528,7 +548,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     saveGeminiChatUrl(geminiChatUrl);
     
-    await sendToGeminiChat(geminiChatUrl, clipboardContent, showStatusCallback);
+    await sendToGeminiChat(geminiChatUrl, clipboardContent, showStatusCallback, bookTitle, selectedChapter);
   }
   
   async function handlePerformActions() {

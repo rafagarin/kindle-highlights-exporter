@@ -5,9 +5,11 @@
  * @param {string} gemUrl - URL of the Gemini gem/chat
  * @param {string} content - Content to send as the first message
  * @param {Function} statusCallback - Callback for status updates
+ * @param {string} bookName - Optional book name for renaming conversation
+ * @param {string} chapterName - Optional chapter name for renaming conversation
  * @returns {Promise<boolean>} Success status
  */
-export async function sendToGeminiChat(gemUrl, content, statusCallback) {
+export async function sendToGeminiChat(gemUrl, content, statusCallback, bookName = null, chapterName = null) {
   if (!gemUrl) {
     statusCallback('Please provide a Gemini gem URL in the Config tab', 'error');
     return false;
@@ -41,13 +43,16 @@ export async function sendToGeminiChat(gemUrl, content, statusCallback) {
     return new Promise((resolve) => {
       chrome.tabs.sendMessage(tab.id, { 
         action: 'sendToGeminiChat',
-        content: content
+        content: content,
+        bookName: bookName,
+        chapterName: chapterName
       }, function(response) {
         if (chrome.runtime.lastError) {
           statusCallback('Please refresh the Gemini page and try again', 'error');
           resolve(false);
         } else if (response && response.success) {
-          statusCallback('Successfully sent content to Gemini chat!', 'success');
+          const message = response.message || 'Successfully sent content to Gemini chat!';
+          statusCallback(message, 'success');
           resolve(true);
         } else {
           statusCallback(response?.error || 'Failed to send content to Gemini', 'error');
@@ -104,11 +109,361 @@ function waitForTabReady(tabId) {
 }
 
 /**
- * Handle sending content to Gemini chat (for use in content scripts)
- * @param {string} content - Content to send
+ * Rename a Gemini conversation
+ * @param {string} conversationName - Name to use for the conversation (format: "📖 Book Name - Chapter Name")
  * @returns {Promise<{success: boolean, error?: string, message?: string}>}
  */
-export async function handleSendToGeminiChat(content) {
+async function renameGeminiConversation(conversationName) {
+  try {
+    console.log(`Renaming Gemini conversation to: "${conversationName}"...`);
+    
+    // Import waitForElement from utils if available
+    let waitForElement;
+    try {
+      const utilsModule = await import(chrome.runtime.getURL('notebooklm_utils.js'));
+      waitForElement = utilsModule.waitForElement;
+    } catch (e) {
+      // Fallback waitForElement implementation
+      waitForElement = async (selector, timeout = 5000, pollInterval = 250) => {
+        return new Promise((resolve) => {
+          const immediateCheck = document.querySelector(selector);
+          if (immediateCheck) {
+            resolve(immediateCheck);
+            return;
+          }
+          
+          let startTime = Date.now();
+          let resolved = false;
+          
+          const pollIntervalId = setInterval(() => {
+            if (resolved) return;
+            
+            const element = document.querySelector(selector);
+            if (element) {
+              resolved = true;
+              clearInterval(pollIntervalId);
+              resolve(element);
+              return;
+            }
+            
+            if (Date.now() - startTime >= timeout) {
+              resolved = true;
+              clearInterval(pollIntervalId);
+              resolve(null);
+            }
+          }, pollInterval);
+        });
+      };
+    }
+    
+    // Wait a moment for the conversation to appear in the list
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Step 1: Find the conversation list section
+    const conversationsList = await waitForElement('conversations-list', 10000, 200);
+    if (!conversationsList) {
+      throw new Error('Could not find conversations list');
+    }
+    
+    console.log('Found conversations list');
+    
+    // Step 2: Wait for the first conversation to appear, then wait for its More button
+    // First, find the first conversation item
+    let firstConversation = await waitForElement('conversations-list div.conversation', 10000, 200);
+    
+    if (!firstConversation) {
+      // Try finding selected conversation
+      firstConversation = conversationsList.querySelector('div.conversation.selected');
+    }
+    
+    if (!firstConversation) {
+      // Try finding by the specific structure
+      const conversationItems = conversationsList.querySelectorAll('div.conversation, div.mat-mdc-tooltip-trigger.conversation');
+      if (conversationItems.length > 0) {
+        firstConversation = conversationItems[0];
+      }
+    }
+    
+    if (!firstConversation) {
+      throw new Error('Could not find first conversation item');
+    }
+    
+    console.log('Found first conversation item, waiting for it to fully load...');
+    
+    // Wait 10 seconds for the first conversation to be fully loaded before trying to rename
+    // This ensures we rename the correct (newly created) conversation, not an older one
+    await new Promise(resolve => setTimeout(resolve, 10000));
+    
+    // After the delay, re-find the first conversation to ensure we have the correct one
+    // (the newly created conversation should now be first in the list)
+    let currentFirstConversation = conversationsList.querySelector('div.conversation.selected');
+    
+    if (!currentFirstConversation) {
+      const conversationItems = conversationsList.querySelectorAll('div.conversation, div.mat-mdc-tooltip-trigger.conversation');
+      if (conversationItems.length > 0) {
+        currentFirstConversation = conversationItems[0];
+      }
+    }
+    
+    // Use the re-found conversation, or fall back to the original one
+    if (currentFirstConversation) {
+      firstConversation = currentFirstConversation;
+      console.log('Re-verified first conversation after delay');
+    }
+    
+    console.log('First conversation should be fully loaded, hovering to reveal More button...');
+    
+    // Step 3: Hover over the conversation to reveal the More button
+    // Trigger mouseenter and mouseover events to simulate hover
+    const mouseEnterEvent = new MouseEvent('mouseenter', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    const mouseOverEvent = new MouseEvent('mouseover', {
+      bubbles: true,
+      cancelable: true,
+      view: window
+    });
+    
+    firstConversation.dispatchEvent(mouseEnterEvent);
+    firstConversation.dispatchEvent(mouseOverEvent);
+    
+    // Also try hovering on the parent element
+    const parent = firstConversation.parentElement;
+    if (parent) {
+      parent.dispatchEvent(mouseEnterEvent);
+      parent.dispatchEvent(mouseOverEvent);
+    }
+    
+    // Wait a moment for the hover state to trigger
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Step 4: Wait for the More button (conversation-actions-menu-button) to appear after hover
+    // Based on the provided selector: button.conversation-actions-menu-button
+    // Wait up to 15 seconds for it to appear
+    let moreButton = null;
+    const maxWaitTime = 15000; // 15 seconds
+    const pollInterval = 500; // Check every 500ms
+    const startTime = Date.now();
+    
+    while (!moreButton && (Date.now() - startTime < maxWaitTime)) {
+      // Try finding the More button with the correct selector
+      // First try the conversation-actions-container, then the button
+      const actionsContainer = firstConversation.querySelector('div.conversation-actions-container');
+      
+      if (actionsContainer) {
+        moreButton = actionsContainer.querySelector('button.conversation-actions-menu-button');
+      }
+      
+      // If not found, try finding by data-test-id
+      if (!moreButton) {
+        moreButton = firstConversation.querySelector('button[data-test-id="actions-menu-button"]');
+      }
+      
+      // If not found, try finding by aria-label
+      if (!moreButton) {
+        moreButton = firstConversation.querySelector('button[aria-label="Open menu for conversation actions."]');
+      }
+      
+      // If not found, try finding the button class directly
+      if (!moreButton) {
+        moreButton = firstConversation.querySelector('button.conversation-actions-menu-button');
+      }
+      
+      // If not found, try finding by mat-icon with data-test-id
+      if (!moreButton) {
+        const icon = firstConversation.querySelector('mat-icon[data-test-id="actions-menu-icon"]');
+        if (icon) {
+          moreButton = icon.closest('button');
+        }
+      }
+      
+      // If still not found, try finding the conversation-actions-container and then button
+      if (!moreButton) {
+        const container = conversationsList.querySelector('div.conversation-actions-container');
+        if (container) {
+          moreButton = container.querySelector('button');
+        }
+      }
+      
+      // If found, break out of the loop
+      if (moreButton) {
+        break;
+      }
+      
+      // If not found yet and we're still waiting, maintain hover
+      if (Date.now() - startTime < maxWaitTime) {
+        firstConversation.dispatchEvent(mouseOverEvent);
+      }
+      
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    
+    if (!moreButton) {
+      throw new Error('Could not find More button (conversation-actions-menu-button) in first conversation after hovering and waiting 15 seconds');
+    }
+    
+    console.log('Found More button, clicking...');
+    moreButton.click();
+    
+    // Wait for the menu to appear
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Step 3: Find and click the "Rename" button in the menu
+    // Wait for the menu to fully appear
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    let renameButton = null;
+    
+    // Search for button with "Rename" text in the overlay/menu
+    const overlayButtons = document.querySelectorAll('div.cdk-overlay-container button, mat-menu button, button[role="menuitem"]');
+    for (let btn of overlayButtons) {
+      const text = btn.textContent.trim();
+      if (text.toLowerCase() === 'rename') {
+        renameButton = btn;
+        break;
+      }
+    }
+    
+    // If not found in overlay, search all buttons
+    if (!renameButton) {
+      const buttons = document.querySelectorAll('button, [role="button"]');
+      for (let btn of buttons) {
+        const text = btn.textContent.trim();
+        if (text.toLowerCase() === 'rename' && !btn.disabled) {
+          renameButton = btn;
+          break;
+        }
+      }
+    }
+    
+    // Also try in mat-menu-panel if it exists
+    if (!renameButton) {
+      const menuPanel = document.querySelector('mat-menu-panel');
+      if (menuPanel) {
+        const menuButtons = menuPanel.querySelectorAll('button');
+        for (let btn of menuButtons) {
+          const text = btn.textContent.trim();
+          if (text.toLowerCase() === 'rename') {
+            renameButton = btn;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (!renameButton) {
+      throw new Error('Could not find "Rename" button');
+    }
+    
+    console.log('Clicking Rename button...');
+    renameButton.click();
+    
+    // Wait for the rename dialog to appear
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Step 4: Find the text input field (will be automatically focused)
+    // Selector: #mat-mdc-dialog-0 > div > div > edit-title-dialog > mat-dialog-content > div > mat-form-field > div.mat-mdc-text-field-wrapper...
+    let nameInput = await waitForElement('edit-title-dialog input', 5000, 100);
+    
+    if (!nameInput) {
+      // Try alternative selectors
+      nameInput = document.querySelector('#mat-mdc-dialog-0 input, mat-dialog-content input, edit-title-dialog input');
+    }
+    
+    if (!nameInput) {
+      // Try finding in mat-form-field
+      const formField = document.querySelector('mat-form-field');
+      if (formField) {
+        nameInput = formField.querySelector('input');
+      }
+    }
+    
+    if (!nameInput) {
+      throw new Error('Could not find conversation name input field');
+    }
+    
+    console.log('Found name input, setting conversation name...');
+    
+    // Clear existing content and set new name
+    nameInput.focus();
+    nameInput.select();
+    
+    // Set the conversation name
+    try {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeInputValueSetter.call(nameInput, conversationName);
+    } catch (e) {
+      nameInput.value = conversationName;
+    }
+    
+    // Trigger input events
+    nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    nameInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    
+    // Set value again to ensure it sticks
+    nameInput.value = conversationName;
+    nameInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    
+    // Wait a moment for the form to update
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Step 5: Find and click the "Rename" button in the dialog
+    let confirmRenameButton = null;
+    
+    // Search for button with "Rename" text in the dialog
+    const dialogButtons = document.querySelectorAll('edit-title-dialog button, mat-dialog-actions button, #mat-mdc-dialog-0 button');
+    for (let btn of dialogButtons) {
+      const text = btn.textContent.trim();
+      if (text.toLowerCase() === 'rename' || (text.toLowerCase().includes('rename') && !text.toLowerCase().includes('cancel'))) {
+        confirmRenameButton = btn;
+        break;
+      }
+    }
+    
+    if (!confirmRenameButton) {
+      // Try finding submit button or primary button
+      confirmRenameButton = document.querySelector('edit-title-dialog button[type="submit"], mat-dialog-actions button[type="submit"]');
+    }
+    
+    if (!confirmRenameButton) {
+      // Last resort: find the last button in dialog (usually the action button)
+      const buttons = document.querySelectorAll('edit-title-dialog button');
+      if (buttons.length > 0) {
+        confirmRenameButton = buttons[buttons.length - 1];
+      }
+    }
+    
+    if (!confirmRenameButton) {
+      throw new Error('Could not find confirm Rename button');
+    }
+    
+    console.log('Clicking confirm Rename button...');
+    confirmRenameButton.click();
+    
+    // Wait for the dialog to close
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('Conversation renamed successfully');
+    return { success: true, message: `Successfully renamed conversation to "${conversationName}"` };
+    
+  } catch (error) {
+    console.error('Rename conversation error:', error);
+    // Don't fail the whole operation if renaming fails
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Handle sending content to Gemini chat (for use in content scripts)
+ * @param {string} content - Content to send
+ * @param {string} bookName - Optional book name for renaming conversation
+ * @param {string} chapterName - Optional chapter name for renaming conversation
+ * @returns {Promise<{success: boolean, error?: string, message?: string}>}
+ */
+export async function handleSendToGeminiChat(content, bookName = null, chapterName = null) {
   try {
     console.log('Starting Gemini chat automation...');
     
@@ -333,6 +688,27 @@ export async function handleSendToGeminiChat(content) {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     console.log('Successfully sent content to Gemini chat');
+    
+    // Step 4: Rename the conversation if bookName and chapterName are provided
+    if (bookName && chapterName) {
+      try {
+        const conversationName = `📖 ${bookName} - ${chapterName}`;
+        console.log('Renaming conversation after sending...');
+        const renameResult = await renameGeminiConversation(conversationName);
+        if (renameResult.success) {
+          return { success: true, message: `Successfully sent content and renamed conversation to "${conversationName}"` };
+        } else {
+          // If rename fails, still report success for sending
+          console.warn('Message sent successfully but rename failed:', renameResult.error);
+          return { success: true, message: `Successfully sent content, but rename failed: ${renameResult.error}` };
+        }
+      } catch (error) {
+        // If rename fails, still report success for sending
+        console.warn('Message sent successfully but rename error:', error);
+        return { success: true, message: `Successfully sent content, but rename error: ${error.message}` };
+      }
+    }
+    
     return { success: true, message: 'Successfully sent content to Gemini chat' };
     
   } catch (error) {
