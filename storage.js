@@ -9,6 +9,8 @@ export function loadSavedData() {
     chrome.storage.local.get([
       'kindleFileUrl',
       'selectedChapter',
+      'selectedNotebook',
+      'notebooksList',
       'notionPageUrl',
       'notionAuthToken',
       'notebooklmUrl',
@@ -126,5 +128,37 @@ export function loadActionStates() {
       resolve(result);
     });
   });
+}
+
+/**
+ * Save list of NotebookLM notebooks
+ * @param {string[]} notebooks - Array of notebook names
+ */
+export function saveNotebooksList(notebooks) {
+  chrome.storage.local.set({ notebooksList: notebooks });
+}
+
+/**
+ * Load list of NotebookLM notebooks
+ * @returns {Promise<string[]>} Array of notebook names
+ */
+export function loadNotebooksList() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['notebooksList'], function(result) {
+      resolve(result.notebooksList || []);
+    });
+  });
+}
+
+/**
+ * Save selected notebook name
+ * @param {string} notebook - Notebook name
+ */
+export function saveSelectedNotebook(notebook) {
+  if (notebook) {
+    chrome.storage.local.set({ selectedNotebook: notebook });
+  } else {
+    chrome.storage.local.remove('selectedNotebook');
+  }
 }
 

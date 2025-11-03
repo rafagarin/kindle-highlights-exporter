@@ -47,7 +47,8 @@ A Chrome extension that automates the learning workflow from Kindle highlights t
    - Follow the steps sequentially:
      1. **Load highlights file** - Select your Kindle highlights HTML file
      2. **Select chapter to process** - Choose a chapter from the dropdown
-     3. **Select Actions** - Choose one or more actions to perform:
+     3. **Select NotebookLM notebook** - Choose an existing notebook from the dropdown, or select "Other (add notebook)" to create a new notebook.
+     4. **Select Actions** - Choose one or more actions to perform:
         - **Process highlights with AI** - Process highlights using Gemini AI (requires Gemini API Key)
         - **Copy notes to Notion** - Copy processed highlights to Notion database (requires Notion Integration Token and Database URL)
         - **Create Gemini quiz** - Send content to Gemini Chat/Gem for quiz creation (requires Gemini Chat URL)

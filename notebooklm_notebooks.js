@@ -285,6 +285,72 @@ export async function openNotebookByName(bookName) {
   }
 }
 
+/**
+ * Scrape notebook names from the NotebookLM projects page
+ * Only scrapes notebooks from the user's own projects container
+ * @returns {Promise<string[]>} Array of notebook names
+ */
+export async function scrapeNotebookNames() {
+  try {
+    console.log('Scraping notebook names from NotebookLM...');
+    
+    // Wait for the projects page to load
+    await waitForElement('project-button, .project-button, welcome-page', 10000, 100);
+    
+    // Wait a bit more for projects to fully render
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Find the my-projects-container element (only user's own notebooks)
+    const myProjectsContainer = document.querySelector('div.my-projects-container');
+    
+    if (!myProjectsContainer) {
+      console.log('Could not find my-projects-container, trying to find project buttons directly in body...');
+      // Fallback: if container doesn't exist, return empty (don't scrape suggested notebooks)
+      return [];
+    }
+    
+    // Find project buttons only within my-projects-container
+    const projectButtons = myProjectsContainer.querySelectorAll('project-button');
+    
+    if (projectButtons.length === 0) {
+      console.log('No notebooks found in my-projects-container');
+      return [];
+    }
+    
+    console.log(`Found ${projectButtons.length} notebook(s) in my-projects-container`);
+    
+    const notebookNames = [];
+    
+    // Extract notebook names from project buttons
+    for (let button of projectButtons) {
+      // Find the title element within the project button
+      const titleElement = button.querySelector('.project-button-title, [class*="project-button-title"], span[id$="-title"]');
+      
+      if (titleElement) {
+        const titleText = titleElement.textContent.trim();
+        if (titleText) {
+          notebookNames.push(titleText);
+          console.log(`Found notebook: "${titleText}"`);
+        }
+      } else {
+        // Fallback: try to get text from the button itself
+        const buttonText = button.textContent?.trim();
+        if (buttonText && !buttonText.includes('New notebook') && !buttonText.includes('Create')) {
+          notebookNames.push(buttonText);
+          console.log(`Found notebook (fallback): "${buttonText}"`);
+        }
+      }
+    }
+    
+    console.log(`Scraped ${notebookNames.length} notebook names:`, notebookNames);
+    return notebookNames;
+    
+  } catch (error) {
+    console.error('Error scraping notebook names:', error);
+    throw error;
+  }
+}
+
 // Export waitForTabReady for use in main notebooklm.js
 export { waitForTabReady };
 

@@ -130,6 +130,28 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // Keep message channel open for async response
   }
   
+  if (request.action === 'scrapeNotebookNames') {
+    // Load notebooklm_notebooks.js module dynamically
+    (async () => {
+      try {
+        const moduleUrl = chrome.runtime.getURL('notebooklm_notebooks.js');
+        const notebooklmModule = await import(moduleUrl);
+        return notebooklmModule.scrapeNotebookNames();
+      } catch (error) {
+        console.error('Failed to load notebooklm_notebooks module:', error);
+        throw error;
+      }
+    })()
+      .then(notebooks => {
+        safeSendResponse({success: true, notebooks: notebooks});
+      })
+      .catch(error => {
+        console.error('Error in scrapeNotebookNames:', error);
+        safeSendResponse({success: false, error: error.message});
+      });
+    return true; // Keep message channel open for async response
+  }
+  
   safeSendResponse({status: 'ready'});
   return false;
 });

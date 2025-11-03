@@ -45,10 +45,34 @@
         </div>
         <div id="step1Status" class="status"></div>
       </div>
+      
+      <!-- Step 3: Select NotebookLM notebook -->
+      <div class="step">
+        <h2>3. Select NotebookLM notebook</h2>
+        <div class="input-group">
+          <label for="notebookSelect">Select a notebook:</label>
+          <select id="notebookSelect" class="url-input">
+            <option value="">-- Select a notebook --</option>
+          </select>
+        </div>
+        <div class="input-group" id="customNotebookGroup" style="display: none;">
+          <label for="customNotebookInput">Enter notebook name:</label>
+          <input 
+            type="text" 
+            id="customNotebookInput" 
+            placeholder="Enter notebook name..."
+            class="url-input"
+          />
+        </div>
+        <div class="input-group">
+          <a href="#" id="refetchNotebooksBtn" class="refetch-link">Refetch Notebooks</a>
+        </div>
+        <div id="step2NotebookStatus" class="status"></div>
+      </div>
     
-    <!-- Step 3: Select Actions -->
+    <!-- Step 4: Select Actions -->
     <div class="step">
-      <h2>3. Select Actions</h2>
+      <h2>4. Select Actions</h2>
       <div class="input-group">
         <label class="checkbox-label">
           <input type="checkbox" id="actionProcessHighlights" />

@@ -5,7 +5,7 @@ import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
 import { processHighlightsWithGemini } from './gemini.js';
 import { sendToGeminiChat } from './gemini_chat.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveGeminiChatUrl, saveKindleFile, saveActionState, loadActionStates } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveGeminiChatUrl, saveKindleFile, saveActionState, loadActionStates, saveNotebooksList, loadNotebooksList, saveSelectedNotebook } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', function() {
   const step1Status = document.getElementById('step1Status');
   const step2Status = document.getElementById('step2Status');
   const performActionsBtn = document.getElementById('performActionsBtn');
+  
+  // Notebook selection elements
+  const notebookSelect = document.getElementById('notebookSelect');
+  const customNotebookGroup = document.getElementById('customNotebookGroup');
+  const customNotebookInput = document.getElementById('customNotebookInput');
+  const refetchNotebooksBtn = document.getElementById('refetchNotebooksBtn');
+  const step2NotebookStatus = document.getElementById('step2NotebookStatus');
   
   // Action checkboxes
   const actionProcessHighlights = document.getElementById('actionProcessHighlights');
@@ -41,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Store the full HTML content and chapters list
   let cachedHtmlContent = null;
   let chaptersList = [];
+  let selectedNotebookName = null;
   
   // Initialize popup
   initializePopup();
@@ -59,6 +67,9 @@ document.addEventListener('DOMContentLoaded', function() {
     kindleFileInput.addEventListener('change', handleFileSelection);
     performActionsBtn.addEventListener('click', handlePerformActions);
     saveConfigBtn.addEventListener('click', handleSaveConfig);
+    notebookSelect.addEventListener('change', handleNotebookSelection);
+    refetchNotebooksBtn.addEventListener('click', handleRefetchNotebooks);
+    customNotebookInput.addEventListener('input', handleCustomNotebookInput);
     
     // Set up checkbox listeners to save state
     actionProcessHighlights.addEventListener('change', () => {
@@ -142,6 +153,25 @@ document.addEventListener('DOMContentLoaded', function() {
       if (result.actionCreateGeminiQuiz !== undefined) {
         actionCreateGeminiQuiz.checked = result.actionCreateGeminiQuiz;
       }
+      
+      // Load notebooks list and populate dropdown
+      loadNotebooksList().then(notebooks => {
+        populateNotebooksDropdown(notebooks);
+        
+        // Restore saved notebook selection if it exists
+        if (result.selectedNotebook) {
+          if (notebooks.includes(result.selectedNotebook)) {
+            notebookSelect.value = result.selectedNotebook;
+            selectedNotebookName = result.selectedNotebook;
+          } else if (result.selectedNotebook) {
+            // Notebook not in list, show custom input
+            notebookSelect.value = '__CUSTOM__';
+            customNotebookGroup.style.display = 'flex';
+            customNotebookInput.value = result.selectedNotebook;
+            selectedNotebookName = result.selectedNotebook;
+          }
+        }
+      });
     });
   }
   
@@ -478,32 +508,188 @@ document.addEventListener('DOMContentLoaded', function() {
     showStatusCallback(`Successfully created page "${pageTitle}" with ${blocks.length} blocks in Notion!`, 'success');
   }
   
-  async function addSourceToNotebooklm(showStatusCallback) {
-    // Check if we have cached HTML content
-    if (!cachedHtmlContent) {
-      showStatusCallback('Please load a Kindle highlights file first in Step 1', 'error');
-      throw new Error('No file loaded');
+  function populateNotebooksDropdown(notebooks) {
+    notebookSelect.innerHTML = '<option value="">-- Select a notebook --</option>';
+    
+    // Add all notebooks
+    notebooks.forEach(notebook => {
+      const option = document.createElement('option');
+      option.value = notebook;
+      option.textContent = notebook;
+      notebookSelect.appendChild(option);
+    });
+    
+    // Add "Other (add notebook)" option
+    const otherOption = document.createElement('option');
+    otherOption.value = '__CUSTOM__';
+    otherOption.textContent = 'Other (add notebook)';
+    notebookSelect.appendChild(otherOption);
+  }
+  
+  function handleNotebookSelection() {
+    const selectedValue = notebookSelect.value;
+    
+    if (selectedValue === '__CUSTOM__') {
+      // Show custom input
+      customNotebookGroup.style.display = 'flex';
+      selectedNotebookName = customNotebookInput.value.trim() || null;
+      if (selectedNotebookName) {
+        saveSelectedNotebook(selectedNotebookName);
+        showStatus(step2NotebookStatus, `Using custom notebook: "${selectedNotebookName}"`, 'info');
+      } else {
+        saveSelectedNotebook('');
+        showStatus(step2NotebookStatus, 'Enter notebook name', 'info');
+      }
+    } else if (selectedValue) {
+      // Hide custom input and use selected notebook
+      customNotebookGroup.style.display = 'none';
+      customNotebookInput.value = '';
+      selectedNotebookName = selectedValue;
+      saveSelectedNotebook(selectedValue);
+      showStatus(step2NotebookStatus, `Selected: "${selectedValue}"`, 'success');
+    } else {
+      // No selection
+      customNotebookGroup.style.display = 'none';
+      customNotebookInput.value = '';
+      selectedNotebookName = null;
+      saveSelectedNotebook('');
+      showStatus(step2NotebookStatus, '', '');
     }
+  }
+  
+  function handleCustomNotebookInput() {
+    const customName = customNotebookInput.value.trim();
+    if (customName && notebookSelect.value === '__CUSTOM__') {
+      selectedNotebookName = customName;
+      saveSelectedNotebook(customName);
+      showStatus(step2NotebookStatus, `Using custom notebook: "${customName}"`, 'info');
+    } else if (!customName && notebookSelect.value === '__CUSTOM__') {
+      selectedNotebookName = null;
+      saveSelectedNotebook('');
+      showStatus(step2NotebookStatus, 'Enter notebook name', 'info');
+    }
+  }
+  
+  async function handleRefetchNotebooks(event) {
+    event.preventDefault(); // Prevent default link behavior
+    refetchNotebooksBtn.style.pointerEvents = 'none'; // Disable link temporarily
+    showStatus(step2NotebookStatus, 'Opening NotebookLM to fetch notebooks...', 'info');
+    
+    try {
+      // Open NotebookLM in a new tab
+      const tab = await chrome.tabs.create({ url: 'https://notebooklm.google.com/' });
+      
+      // Wait for the page to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Send message to content script to scrape notebook names
+      chrome.tabs.sendMessage(tab.id, { 
+        action: 'scrapeNotebookNames'
+      }, async function(response) {
+        if (chrome.runtime.lastError) {
+          showStatus(step2NotebookStatus, 'Error: Could not scrape notebooks. Please ensure NotebookLM page is loaded.', 'error');
+          refetchNotebooksBtn.style.pointerEvents = 'auto';
+          return;
+        }
+        
+        if (response && response.success && response.notebooks) {
+          // Save notebooks list
+          saveNotebooksList(response.notebooks);
+          
+          // Update dropdown
+          populateNotebooksDropdown(response.notebooks);
+          
+          // Restore selection if it exists in the new list
+          if (selectedNotebookName && response.notebooks.includes(selectedNotebookName)) {
+            notebookSelect.value = selectedNotebookName;
+          } else if (selectedNotebookName && notebookSelect.value === '__CUSTOM__') {
+            // Keep custom selection
+          } else {
+            notebookSelect.value = '';
+            selectedNotebookName = null;
+          }
+          
+          showStatus(step2NotebookStatus, `Found ${response.notebooks.length} notebook(s)!`, 'success');
+          
+          // Clear status after 3 seconds
+          setTimeout(() => {
+            showStatus(step2NotebookStatus, '', '');
+          }, 3000);
+        } else {
+          showStatus(step2NotebookStatus, response?.error || 'Failed to scrape notebooks', 'error');
+        }
+        
+        refetchNotebooksBtn.style.pointerEvents = 'auto';
+      });
+      
+    } catch (error) {
+      console.error('Error refetching notebooks:', error);
+      showStatus(step2NotebookStatus, `Error: ${error.message}`, 'error');
+      refetchNotebooksBtn.style.pointerEvents = 'auto';
+    }
+  }
+  
+  async function addSourceToNotebooklm(showStatusCallback) {
+    // Check if notebook is selected
+    if (!selectedNotebookName) {
+      // If custom input has value, use it
+      const customName = customNotebookInput.value.trim();
+      if (customName) {
+        selectedNotebookName = customName;
+        saveSelectedNotebook(customName);
+      } else {
+        showStatusCallback('Please select a notebook in Step 3', 'error');
+        throw new Error('No notebook selected');
+      }
+    }
+    
+    // Get the selected chapter name and book title for renaming the source
+    const selectedChapter = chapterSelect.value;
     
     // Get book title from cached HTML
-    const bookTitle = extractBookTitle(cachedHtmlContent);
-    if (!bookTitle) {
-      showStatusCallback('Could not extract book title. Please reload file in Step 1.', 'error');
-      throw new Error('Could not extract book title');
+    let sourceName = null;
+    if (selectedChapter) {
+      if (cachedHtmlContent) {
+        const bookTitle = extractBookTitle(cachedHtmlContent);
+        if (bookTitle) {
+          // Format as "Chapter Name (Book Name)"
+          sourceName = `${selectedChapter} (${bookTitle})`;
+        } else {
+          // Fallback to just chapter name if book title not found
+          sourceName = selectedChapter;
+        }
+      } else {
+        // Fallback to just chapter name if no cached content
+        sourceName = selectedChapter;
+      }
     }
     
-    // Get the selected chapter name for renaming the source
-    const selectedChapter = chapterSelect.value;
-    const sourceName = selectedChapter || null;
-    
-    await exportToNotebooklm(bookTitle, null, showStatusCallback, sourceName);
+    await exportToNotebooklm(selectedNotebookName, null, showStatusCallback, sourceName);
   }
   
   async function generateFlashcards(showStatusCallback) {
-    // Get the selected chapter name (source name) to select only that source
-    // Also use it as the flashcard name
+    // Get the selected chapter name and format it to match the renamed source
+    // Source is named as "Chapter Name (Book Name)", so we need to match that format
     const selectedChapter = chapterSelect.value;
-    const sourceName = selectedChapter || null;
+    
+    // Format source name to match the renamed source: "Chapter Name (Book Name)"
+    let sourceName = null;
+    if (selectedChapter) {
+      if (cachedHtmlContent) {
+        const bookTitle = extractBookTitle(cachedHtmlContent);
+        if (bookTitle) {
+          // Format as "Chapter Name (Book Name)" to match the renamed source
+          sourceName = `${selectedChapter} (${bookTitle})`;
+        } else {
+          // Fallback to just chapter name if book title not found
+          sourceName = selectedChapter;
+        }
+      } else {
+        // Fallback to just chapter name if no cached content
+        sourceName = selectedChapter;
+      }
+    }
+    
     const chapterName = selectedChapter || null; // Use chapter name for renaming the flashcard
     
     await createFlashcards(showStatusCallback, sourceName, chapterName);
@@ -567,6 +753,26 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!selectedChapter) {
       showStatus(step2Status, 'Please select a chapter first in Step 2', 'error');
       return;
+    }
+    
+    // Check if notebook is selected for NotebookLM actions
+    if (actionAddToNotebooklm.checked || actionGenerateFlashcards.checked) {
+      // Get notebook name (from dropdown or custom input)
+      let notebookName = selectedNotebookName;
+      if (!notebookName && notebookSelect.value === '__CUSTOM__') {
+        notebookName = customNotebookInput.value.trim();
+      }
+      
+      if (!notebookName) {
+        showStatus(step2Status, 'Please select a notebook in Step 3', 'error');
+        return;
+      }
+      
+      // Save it if it's from custom input
+      if (!selectedNotebookName && notebookName) {
+        selectedNotebookName = notebookName;
+        saveSelectedNotebook(notebookName);
+      }
     }
     
     performActionsBtn.disabled = true;
