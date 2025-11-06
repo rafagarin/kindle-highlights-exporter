@@ -162,3 +162,27 @@ export function saveSelectedNotebook(notebook) {
   }
 }
 
+/**
+ * Save processed content
+ * @param {string} content - Processed content to save
+ */
+export function saveProcessedContent(content) {
+  if (content) {
+    chrome.storage.local.set({ processedContent: content });
+  } else {
+    chrome.storage.local.remove('processedContent');
+  }
+}
+
+/**
+ * Load processed content
+ * @returns {Promise<string>} Processed content or empty string
+ */
+export function loadProcessedContent() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['processedContent'], function(result) {
+      resolve(result.processedContent || '');
+    });
+  });
+}
+

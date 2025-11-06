@@ -5,6 +5,47 @@
 import { openNotebookByName, waitForTabReady } from './notebooklm_notebooks.js';
 import { handleNotebooklmExport } from './notebooklm_sources.js';
 import { handleCreateFlashcards, renameFlashcard } from './notebooklm_flashcards.js';
+import { loadProcessedContent } from './storage.js';
+
+/**
+ * Wait for content script to be ready by sending a ping message
+ * @param {number} tabId - Tab ID to check
+ * @param {Function} statusCallback - Optional callback for status updates
+ * @returns {Promise<void>}
+ */
+function waitForContentScript(tabId, statusCallback = null) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const maxAttempts = 30; // Maximum 15 seconds (30 * 500ms)
+    
+    const checkReady = () => {
+      chrome.tabs.sendMessage(tabId, { action: 'ping' }, function(response) {
+        if (chrome.runtime.lastError) {
+          // Content script not ready yet
+          attempts++;
+          if (attempts >= maxAttempts) {
+            console.warn('Content script not ready after maximum attempts, continuing anyway...');
+            resolve(); // Continue anyway, might work
+            return;
+          }
+          // Check again in 500ms
+          setTimeout(checkReady, 500);
+          return;
+        }
+        
+        // Content script is ready
+        if (statusCallback) {
+          statusCallback('NotebookLM ready, adding source...', 'info');
+        }
+        // Give it a moment to fully initialize
+        setTimeout(resolve, 500);
+      });
+    };
+    
+    // Start checking after a brief delay to give content script time to initialize
+    setTimeout(checkReady, 1000);
+  });
+}
 
 // Re-export functions for use in content scripts
 export { openNotebookByName, handleNotebooklmExport, handleCreateFlashcards, renameFlashcard };
@@ -24,14 +65,14 @@ export async function exportToNotebooklm(bookName, content, statusCallback, sour
   }
   
   try {
-    // Get content from clipboard
+    // Get content from storage
     if (!content) {
-      const clipboardContent = await navigator.clipboard.readText();
-      if (!clipboardContent) {
-        statusCallback('No content in clipboard. Please run Step 2 first.', 'error');
+      content = await loadProcessedContent();
+      
+      if (!content) {
+        statusCallback('No content found. Please run Step 2 first.', 'error');
         return false;
       }
-      content = clipboardContent;
     }
     
     statusCallback('Opening NotebookLM...', 'info');
@@ -40,8 +81,11 @@ export async function exportToNotebooklm(bookName, content, statusCallback, sour
     const tab = await chrome.tabs.create({ url: 'https://notebooklm.google.com/' });
     
     // Wait for the page to load
-    statusCallback('Adding source to NotebookLM...', 'info');
+    statusCallback('Waiting for NotebookLM to load...', 'info');
     await waitForTabReady(tab.id);
+    
+    // Wait for content script to be ready
+    await waitForContentScript(tab.id, statusCallback);
     
     // Send message to content script to open the notebook and automate the process
     return new Promise((resolve) => {

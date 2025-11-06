@@ -6,8 +6,6 @@
   "permissions": [
     "activeTab",
     "storage",
-    "clipboardWrite",
-    "clipboardRead",
     "sidePanel"
   ],
   "host_permissions": [
@@ -39,7 +37,8 @@
         "notebooklm_notebooks.js",
         "notebooklm_sources.js",
         "notebooklm_flashcards.js",
-        "gemini_chat.js"
+        "gemini_chat.js",
+        "storage.js"
       ],
       "matches": ["<all_urls>"]
     }

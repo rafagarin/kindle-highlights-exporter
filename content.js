@@ -152,6 +152,12 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true; // Keep message channel open for async response
   }
   
+  if (request.action === 'ping') {
+    // Respond to ping to indicate content script is ready
+    safeSendResponse({status: 'ready'});
+    return false;
+  }
+  
   safeSendResponse({status: 'ready'});
   return false;
 });

@@ -1,5 +1,8 @@
 // Gemini Chat integration module
 
+// Import storage functions - note: this might not work in content script context
+// For now, we'll use chrome.storage directly when needed
+
 /**
  * Send content to Gemini chat
  * @param {string} gemUrl - URL of the Gemini gem/chat
@@ -16,15 +19,22 @@ export async function sendToGeminiChat(gemUrl, content, statusCallback, bookName
   }
   
   if (!content) {
-    // Try to get content from clipboard
+    // Get content from storage
     try {
-      content = await navigator.clipboard.readText();
-      if (!content) {
+      const storedContent = await new Promise((resolve) => {
+        chrome.storage.local.get(['processedContent'], function(result) {
+          resolve(result.processedContent || '');
+        });
+      });
+      
+      if (storedContent) {
+        content = storedContent;
+      } else {
         statusCallback('No content to send. Please run Step 2 first.', 'error');
         return false;
       }
     } catch (error) {
-      statusCallback('Could not read clipboard. Please run Step 2 first.', 'error');
+      statusCallback('Could not read content. Please run Step 2 first.', 'error');
       return false;
     }
   }

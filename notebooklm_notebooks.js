@@ -21,8 +21,8 @@ function waitForTabReady(tabId) {
         
         // Check if tab is complete and ready
         if (tab.status === 'complete') {
-          // Give it a small moment for dynamic content to load
-          setTimeout(resolve, 500);
+          // Give it more time for dynamic content and content script to load
+          setTimeout(resolve, 2000);
           return;
         }
         

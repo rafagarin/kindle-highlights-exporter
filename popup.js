@@ -5,7 +5,7 @@ import { exportToNotebooklm, createFlashcards } from './notebooklm.js';
 import { processHighlightsWithGemini } from './gemini.js';
 import { sendToGeminiChat } from './gemini_chat.js';
 import { showStatus } from './utils.js';
-import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveGeminiChatUrl, saveKindleFile, saveActionState, loadActionStates, saveNotebooksList, loadNotebooksList, saveSelectedNotebook } from './storage.js';
+import { loadSavedData, saveKindleUrl, saveSelectedChapter, saveNotionConfig, saveNotebooklmUrl, saveGeminiApiKey, saveGeminiChatUrl, saveKindleFile, saveActionState, loadActionStates, saveNotebooksList, loadNotebooksList, saveSelectedNotebook, saveProcessedContent, loadProcessedContent } from './storage.js';
 
 document.addEventListener('DOMContentLoaded', function() {
   // DOM element references
@@ -413,13 +413,13 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
     
-    // Copy to clipboard
-    await navigator.clipboard.writeText(processedContent);
+    // Save to storage
+    saveProcessedContent(processedContent);
     
     if (geminiApiKey) {
-      showStatusCallback('Highlights processed with AI and copied to clipboard!', 'success');
+      showStatusCallback('Highlights processed with AI!', 'success');
     } else {
-      showStatusCallback('Highlights processed and copied to clipboard!', 'success');
+      showStatusCallback('Highlights processed!', 'success');
     }
     
     return processedContent;
@@ -450,12 +450,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStatusCallback('Creating page in Notion...', 'info');
     
-    // Get content from clipboard
-    const clipboardContent = await navigator.clipboard.readText();
+    // Get content from storage
+    const content = await loadProcessedContent();
     
-    if (!clipboardContent) {
-      showStatusCallback('No content in clipboard. Process highlights first.', 'error');
-      throw new Error('No content in clipboard');
+    if (!content) {
+      showStatusCallback('No content found. Process highlights first.', 'error');
+      throw new Error('No content found');
     }
     
     // Extract database ID from Notion URL
@@ -480,7 +480,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const { dataSourceId, titlePropertyName, bookNamePropertyName, bookNamePropertyType } = await getDatabaseDataSourceAndTitleProperty(databaseId, authToken);
     
     // Convert Markdown to Notion blocks
-    const blocks = convertMarkdownToNotionBlocks(clipboardContent);
+    const blocks = convertMarkdownToNotionBlocks(content);
     
     // Create the page with title and content
     const progressCallback = (message) => showStatusCallback(message, 'info');
@@ -724,17 +724,17 @@ document.addEventListener('DOMContentLoaded', function() {
       throw new Error('Gemini Chat URL required');
     }
     
-    // Get content from clipboard (should be from Step 2)
-    const clipboardContent = await navigator.clipboard.readText();
-    
-    if (!clipboardContent) {
-      showStatusCallback('No content in clipboard. Please run Step 2 first.', 'error');
-      throw new Error('No content in clipboard');
-    }
-    
     saveGeminiChatUrl(geminiChatUrl);
     
-    await sendToGeminiChat(geminiChatUrl, clipboardContent, showStatusCallback, bookTitle, selectedChapter);
+    // Get content from storage
+    const content = await loadProcessedContent();
+    
+    if (!content) {
+      showStatusCallback('No content found. Please run Step 2 first.', 'error');
+      throw new Error('No content found');
+    }
+    
+    await sendToGeminiChat(geminiChatUrl, content, showStatusCallback, bookTitle, selectedChapter);
   }
   
   async function handlePerformActions() {
