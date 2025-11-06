@@ -467,6 +467,125 @@ async function renameGeminiConversation(conversationName) {
 }
 
 /**
+ * Select the Gemini model (2.5 Flash)
+ * @param {Function} waitForElement - Function to wait for elements
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+async function selectGeminiModel(waitForElement) {
+  try {
+    console.log('Selecting Gemini model (2.5 Flash)...');
+    
+    // Step 1: Find and click the model selector button
+    // Based on the recording: div.trailing-actions-wrapper span.mdc-button__label span
+    // or button with data-test-id="bard-mode-menu-button"
+    let modelSelectorButton = null;
+    
+    // Try multiple selectors from the recording
+    const selectors = [
+      'button[data-test-id="bard-mode-menu-button"]',
+      'div.trailing-actions-wrapper span.mdc-button__label span',
+      'div.trailing-actions-wrapper button span.mdc-button__label span'
+    ];
+    
+    for (const selector of selectors) {
+      modelSelectorButton = await waitForElement(selector, 5000, 200);
+      if (modelSelectorButton) {
+        // If we found a span, get the button parent
+        if (modelSelectorButton.tagName === 'SPAN') {
+          modelSelectorButton = modelSelectorButton.closest('button') || modelSelectorButton.parentElement?.closest('button');
+        }
+        if (modelSelectorButton) break;
+      }
+    }
+    
+    // Also try finding by text content "2.5 Flash" or similar
+    if (!modelSelectorButton) {
+      const buttons = document.querySelectorAll('div.trailing-actions-wrapper button, button[data-test-id*="mode"]');
+      for (let btn of buttons) {
+        const text = btn.textContent.trim();
+        if (text.includes('Flash') || text.includes('2.5')) {
+          modelSelectorButton = btn;
+          break;
+        }
+      }
+    }
+    
+    if (!modelSelectorButton) {
+      throw new Error('Could not find Gemini model selector button');
+    }
+    
+    console.log('Found model selector button, clicking...');
+    modelSelectorButton.click();
+    
+    // Wait for the menu to appear
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Step 2: Find and click the "2.5 Flash" option
+    // Based on the recording: [data-test-id='bard-mode-option-2\\.5flash'] span.mode-desc
+    let modelOption = null;
+    
+    const optionSelectors = [
+      '[data-test-id="bard-mode-option-2.5flash"]',
+      '[data-test-id="bard-mode-option-2\\.5flash"]',
+      'span.mode-desc'
+    ];
+    
+    for (const selector of optionSelectors) {
+      modelOption = await waitForElement(selector, 5000, 200);
+      if (modelOption) {
+        // If we found a span, check if it's within the correct option
+        if (modelOption.tagName === 'SPAN') {
+          const optionContainer = modelOption.closest('[data-test-id*="2.5flash"]');
+          if (optionContainer) {
+            modelOption = optionContainer;
+          } else {
+            // Check if the span contains "2.5 Flash" text
+            if (modelOption.textContent.includes('2.5') || modelOption.textContent.includes('Flash')) {
+              modelOption = modelOption.closest('button, [role="menuitem"], div[data-test-id*="option"]') || modelOption;
+            } else {
+              modelOption = null;
+            }
+          }
+        }
+        if (modelOption) break;
+      }
+    }
+    
+    // Also try finding by text content
+    if (!modelOption) {
+      const menuItems = document.querySelectorAll('[data-test-id*="option"], button[role="menuitem"], div[role="menuitem"]');
+      for (let item of menuItems) {
+        const text = item.textContent.trim();
+        if (text.includes('2.5 Flash') || (text.includes('2.5') && text.includes('Flash'))) {
+          modelOption = item;
+          break;
+        }
+      }
+    }
+    
+    if (!modelOption) {
+      throw new Error('Could not find "2.5 Flash" model option');
+    }
+    
+    console.log('Found 2.5 Flash option, clicking...');
+    modelOption.click();
+    
+    // Wait for the menu to close and model to be selected
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    console.log('Successfully selected Gemini model (2.5 Flash)');
+    return { success: true };
+    
+  } catch (error) {
+    console.error('Error selecting Gemini model:', error);
+    // Don't fail the whole operation if model selection fails
+    // The user might already have the correct model selected
+    console.warn('Model selection failed, continuing anyway:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Handle sending content to Gemini chat (for use in content scripts)
  * @param {string} content - Content to send
  * @param {string} bookName - Optional book name for renaming conversation
@@ -527,6 +646,9 @@ export async function handleSendToGeminiChat(content, bookName = null, chapterNa
     
     // Wait a bit more for the input area to be fully interactive
     await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Step 0: Select the Gemini model (2.5 Flash) before sending content
+    await selectGeminiModel(waitForElement);
     
     // Step 1: Find and click the input area
     // Based on the recording: aria/Enter a prompt here or input-container > div p
